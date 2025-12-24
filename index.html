@@ -108,7 +108,8 @@
         let finalCanvas = document.createElement('canvas');
         let startX, startY, currentX, currentY;
         let isDrawing = false;
-        let finalCropCoords = {}; 
+        let finalCropCoords = {};
+        let dragThreshold = 5; // 設定一個最小拖曳距離閾值 (例如 5 像素)
 
         // 影片上傳事件監聽器：增加 video.load()
         videoUpload.addEventListener('change', function() {
@@ -139,53 +140,87 @@
             selectionBox.style.display = 'none';
         }
 
-        // 使用 Pointer Events 替代 Mouse Events 解決觸控相容性問題
-        staticImageContainer.addEventListener('pointerdown', (e) => {
+        // 輔助函數：用於鎖定和解鎖頁面捲動
+        function preventDefaultScroll(e) {
             e.preventDefault();
+        }
+
+        staticImageContainer.addEventListener('pointerdown', (e) => {
+            if (e.pointerType === 'touch' && e.touches && e.touches.length > 1) return;
+            if (e.button !== 0 && e.pointerType !== 'touch') return;
+
+            // [關鍵修正點 1] 開始拖曳時，在整個文件上監聽並阻止觸控捲動
+            document.body.addEventListener('touchmove', preventDefaultScroll, { passive: false });
+
+            e.preventDefault(); 
+            e.stopPropagation(); 
             isDrawing = true;
+
             const rect = staticImage.getBoundingClientRect(); 
-            // 確保座標從 0 開始
             startX = Math.round(e.clientX - rect.left);
             startY = Math.round(e.clientY - rect.top);
+
             selectionBox.style.display = 'block';
             selectionBox.style.left = startX + 'px';
             selectionBox.style.top = startY + 'px';
             selectionBox.style.width = '0px';
             selectionBox.style.height = '0px';
-        });
+
+            if (staticImageContainer.setPointerCapture) {
+                staticImageContainer.setPointerCapture(e.pointerId);
+            }
+        }, { passive: false });
 
         staticImageContainer.addEventListener('pointermove', (e) => {
             if (!isDrawing) return;
+            // 這裡也需要 preventDefault 防止其他預設行為
+            e.preventDefault(); 
+            e.stopPropagation();
+
             const rect = staticImage.getBoundingClientRect();
             currentX = Math.round(e.clientX - rect.left);
             currentY = Math.round(e.clientY - rect.top);
+
             const width = currentX - startX;
             const height = currentY - startY;
             selectionBox.style.left = (width > 0 ? startX : currentX) + 'px';
             selectionBox.style.top = (height > 0 ? startY : currentY) + 'px';
             selectionBox.style.width = Math.abs(width) + 'px';
             selectionBox.style.height = Math.abs(height) + 'px';
-        });
+        }, { passive: false });
 
-        // 使用 pointerup 取代 window.addEventListener('mouseup', ...), 相容手機放開動作
-        window.addEventListener('pointerup', () => {
+        const endDrawing = (e) => {
             if (!isDrawing) return;
             isDrawing = false;
-            
+
+            // [關鍵修正點 2] 結束拖曳時，移除全局的觸控捲動阻止
+            document.body.removeEventListener('touchmove', preventDefaultScroll, { passive: false });
+
+            if (staticImageContainer.releasePointerCapture) {
+                staticImageContainer.releasePointerCapture(e.pointerId);
+            }
+
             selectionBox.style.display = 'none'; 
+
+            const actualDragDistanceX = Math.abs(currentX - startX);
+            const actualDragDistanceY = Math.abs(currentY - startY);
+
+            if (actualDragDistanceX < dragThreshold && actualDragDistanceY < dragThreshold) {
+                console.log("Drag distance too short, likely a tap. Skipping crop.");
+                return;
+            }
+            
             const displayWidth = staticImage.clientWidth;
             const displayHeight = staticImage.clientHeight;
             const actualWidth = video.videoWidth;
             const actualHeight = video.videoHeight;
-            // 縮放比例尺
             const scaleX = actualWidth / displayWidth;
             const scaleY = actualHeight / displayHeight;
-            // 使用 startX, startY 和 currentX, currentY 來計算範圍
             const selectionLeft = Math.min(startX, currentX);
             const selectionTop = Math.min(startY, currentY);
             const selectionRight = Math.max(startX, currentX);
             const selectionBottom = Math.max(startY, currentY);
-            // 轉換為原始影片解析度的像素座標
+            
             finalCropCoords = {
                 x1: Math.round(selectionLeft * scaleX),
                 y1: Math.round(selectionTop * scaleY),
@@ -193,12 +228,12 @@
                 y2: Math.round(selectionBottom * scaleY)
             };
             
-            // *** DEBUG LOG 1 (更新) ***
-            console.log("Mouse Up Event - Coordinates calculated:", finalCropCoords);
-            console.log(`Dimensions: Width ${finalCropCoords.x2 - finalCropCoords.x1}, Height ${finalCropCoords.y2 - finalCropCoords.y1}`);
-            // 觸發自動裁切
+            console.log("Coordinates calculated:", finalCropCoords);
             confirmCropArea();
-        });
+        };
+
+        staticImageContainer.addEventListener('pointerup', endDrawing);
+        staticImageContainer.addEventListener('pointercancel', endDrawing);
 
         // 執行最終裁切 (confirmCropArea，從 Video Source 繪製)
         function confirmCropArea() {
@@ -300,10 +335,10 @@
         openMapBtn.addEventListener('click', function openGoogleMap() {
             // 獲取輸入框中的地址
             const address = document.getElementById('address').value;
-            let url = 'www.google.com';
+            let url = 'https://www.google.com/maps/place/';
             // 如果使用者已經輸入了地址，就直接搜尋該地址
             if (address) {
-                url = `www.google.com${encodeURIComponent(address)}`;
+                url = `https://www.google.com/maps/place/${encodeURIComponent(address)}`;
             }
             window.open(url, '_blank');
         });
