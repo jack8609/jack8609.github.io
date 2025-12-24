@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>違規檢舉小幫手</title>
+    <style>
+        body { font-family: sans-serif; background: #f4f4f9; padding: 20px; line-height: 1.6; }
+        .container { max-width: 900px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #333; text-align: center; }
+        .section { margin-bottom: 30px; border-bottom: 1px solid #eee; padding-bottom: 20px; }
+        video { width: 100%; border: 1px solid #ccc; border-radius: 4px; }
+        .controls { margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap; }
+        button { padding: 10px 15px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; }
+        button:hover { background: #0056b3; }
+        button.secondary { background: #6c757d; }
+        canvas { display: none; } /* 隱藏處理用的畫布 */
+        .preview-area { display: flex; gap: 10px; margin-top: 15px; }
+        .preview-box { border: 1px solid #ddd; padding: 5px; text-align: center; width: 45%; }
+        .preview-box img { width: 100%; height: auto; }
+        
+        #staticImageContainer { position: relative; cursor: crosshair; margin-top: 15px; }
+        #staticImage { max-width: 100%; height: auto; display: none; }
+        #selectionBox {
+            position: absolute;
+            border: 2px solid red;
+            background: rgba(255, 0, 0, 0.1);
+            display: none;
+            pointer-events: none;
+        }
+        .options-group { margin-bottom: 15px; }
+        .options-group label { display: block; margin-bottom: 5px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>違規檢舉小幫手</h1>
+    <div class="section">
+        <h3>第一步：載入違規影片</h3>
+        <input type="file" id="videoUpload" accept="video/*">
+        <div style="margin-top:10px;">
+            <video id="mainVideo" controls></video>
+        </div>
+    </div>
+    <div class="section">
+        <h3>第二步：擷取車牌特寫</h3>
+        <p>請將影片停在車牌清晰處，點擊下方按鈕開始，然後在靜態圖片上拖拉框選車牌範圍 (放開滑鼠即完成擷取)。</p>
+        <button onclick="startLicensePlateCrop()">開始擷取並框選車牌位置</button>
+        <div id="staticImageContainer">
+            <img id="staticImage" src="#" alt="靜態截圖預覽">
+            <div id="selectionBox"></div>
+        </div>
+        <div id="platePreviewArea">
+            <p>目前車牌預覽：</p>
+            <img id="plateImg" style="border: 2px solid red; max-width: 200px; display: none;">
+        </div>
+    </div>
+    <div class="section">
+        <h3>第三步：生成違規截圖</h3>
+        <p>移動影片時間軸，分別按下按鈕生成圖片。</p>
+         <div class="options-group">
+            <label for="platePosition">車牌擺放位置：</label>
+            <select id="platePosition">
+                <option value="bottomRight">右下角</option>
+                <option value="topRight">右上角</option>
+                <option value="bottomLeft">左下角</option>
+                <option value="topLeft">左上角</option>
+            </select>
+        </div>
+        <div class="options-group">
+            <label for="plateScale">車牌縮放大小 (%)：<span id="scaleValue">30%</span></label>
+            <input type="range" id="plateScale" min="10" max="50" value="30" oninput="document.getElementById('scaleValue').textContent = this.value + '%'">
+        </div>
+        <div class="controls">
+            <button onclick="generateReportImage('before')">1. 生成「違規前」圖片</button>
+            <button onclick="generateReportImage('after')">2. 生成「違規後」圖片</button>
+        </div>
+        <div class="preview-area">
+            <div class="preview-box">
+                <span>違規前預覽</span>
+                <img id="imgBefore">
+                <button class="secondary" onclick="downloadImg('imgBefore', 'before.jpg')">下載此圖</button>
+            </div>
+            <div class="preview-box">
+                <span>違規後預覽</span>
+                <img id="imgAfter">
+                <button class="secondary" onclick="downloadImg('imgAfter', 'after.jpg')">下載此圖</button>
+            </div>
+        </div>
+    </div>
+  <div class="section">
+      <h3>第四步：查詢違規地址</h3>
+      <input type="text" id="address" placeholder="先輸入地址，或直接點按鈕開啟地圖...">
+      <button class="secondary" onclick="openGoogleMap()">開啟 Google Map 查詢地址</button>
+  </div>
+</div>
+
+<script>
+    const video = document.getElementById('mainVideo');
+    const staticImage = document.getElementById('staticImage');
+    const staticImageContainer = document.getElementById('staticImageContainer');
+    const selectionBox = document.getElementById('selectionBox');
+    const plateImg = document.getElementById('plateImg');
+    const videoUpload = document.getElementById('videoUpload');
+    const platePositionSelect = document.getElementById('platePosition'); 
+    const plateScaleInput = document.getElementById('plateScale'); 
+
+    let finalCanvas = document.createElement('canvas');
+    let startX, startY, currentX, currentY;
+    let isDrawing = false;
+    let finalCropCoords = {}; 
+
+    videoUpload.addEventListener('change', function() {
+        const file = this.files[0];
+        if (file) {
+            const url = URL.createObjectURL(file);
+            video.src = url;
+            staticImage.style.display = 'none';
+            plateImg.style.display = 'none';
+        }
+    });
+
+    function startLicensePlateCrop() {
+        if (!video.src || video.videoWidth === 0) {
+            alert("請先上傳並播放影片！");
+            return;
+        }
+        video.pause(); 
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = video.videoWidth;
+        tempCanvas.height = video.videoHeight;
+        const ctx = tempCanvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
+        const dataURL = tempCanvas.toDataURL('image/jpeg');
+
+        staticImage.src = dataURL;
+        staticImage.style.display = 'block'; 
+        selectionBox.style.display = 'none';
+    }
+
+    staticImageContainer.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        isDrawing = true;
+        const rect = staticImage.getBoundingClientRect(); 
+        // 確保座標從 0 開始
+        startX = Math.round(e.clientX - rect.left);
+        startY = Math.round(e.clientY - rect.top);
+        selectionBox.style.display = 'block';
+        selectionBox.style.left = startX + 'px';
+        selectionBox.style.top = startY + 'px';
+        selectionBox.style.width = '0px';
+        selectionBox.style.height = '0px';
+    });
+
+    staticImageContainer.addEventListener('mousemove', (e) => {
+        if (!isDrawing) return;
+        const rect = staticImage.getBoundingClientRect();
+        currentX = Math.round(e.clientX - rect.left);
+        currentY = Math.round(e.clientY - rect.top);
+        const width = currentX - startX;
+        const height = currentY - startY;
+
+        selectionBox.style.left = (width > 0 ? startX : currentX) + 'px';
+        selectionBox.style.top = (height > 0 ? startY : currentY) + 'px';
+        selectionBox.style.width = Math.abs(width) + 'px';
+        selectionBox.style.height = Math.abs(height) + 'px';
+    });
+
+    // *** 修正重點：使用拖拉的起點/終點座標計算最終裁切範圍 ***
+    window.addEventListener('mouseup', () => {
+        if (!isDrawing) return;
+        isDrawing = false;
+        
+        selectionBox.style.display = 'none'; 
+
+        const displayWidth = staticImage.clientWidth;
+        const displayHeight = staticImage.clientHeight;
+        const actualWidth = video.videoWidth;
+        const actualHeight = video.videoHeight;
+
+        // 縮放比例尺
+        const scaleX = actualWidth / displayWidth;
+        const scaleY = actualHeight / displayHeight;
+
+        // 使用 startX, startY 和 currentX, currentY 來計算範圍
+        const selectionLeft = Math.min(startX, currentX);
+        const selectionTop = Math.min(startY, currentY);
+        const selectionRight = Math.max(startX, currentX);
+        const selectionBottom = Math.max(startY, currentY);
+
+        // 轉換為原始影片解析度的像素座標
+        finalCropCoords = {
+            x1: Math.round(selectionLeft * scaleX),
+            y1: Math.round(selectionTop * scaleY),
+            x2: Math.round(selectionRight * scaleX),
+            y2: Math.round(selectionBottom * scaleY)
+        };
+        
+        // *** DEBUG LOG 1 (更新) ***
+        console.log("Mouse Up Event - Coordinates calculated:", finalCropCoords);
+        console.log(`Dimensions: Width ${finalCropCoords.x2 - finalCropCoords.x1}, Height ${finalCropCoords.y2 - finalCropCoords.y1}`);
+
+
+        // 觸發自動裁切
+        confirmCropArea();
+    });
+
+    // 執行最終裁切 (confirmCropArea，從 Video Source 繪製)
+    function confirmCropArea() {
+        const cropWidth = finalCropCoords.x2 - finalCropCoords.x1;
+        const cropHeight = finalCropCoords.y2 - finalCropCoords.y1;
+
+        if (cropWidth <= 0 || cropHeight <= 0) {
+            // *** DEBUG LOG 2 (更新) ***
+            console.error("Crop dimensions are invalid (zero or negative). Not drawing to canvas.");
+             return; 
+        }
+
+        const plateCanvas = document.createElement('canvas'); 
+        plateCanvas.width = cropWidth;
+        plateCanvas.height = cropHeight;
+        const pCtx = plateCanvas.getContext('2d');
+        
+        try {
+            pCtx.drawImage(
+                video, 
+                finalCropCoords.x1, finalCropCoords.y1, cropWidth, cropHeight, 
+                0, 0, cropWidth, cropHeight    
+            );
+            
+            plateImg.src = plateCanvas.toDataURL('image/jpeg');
+            plateImg.style.display = 'block';
+            // *** DEBUG LOG 3 (更新) ***
+            console.log("Successfully drew image to canvas and updated preview.");
+
+        } catch (e) {
+            // *** DEBUG LOG 4 (更新) ***
+            console.error("Error during pCtx.drawImage:", e);
+        }
+    }
+
+
+    // 3. 合成大圖 (大圖 + 角落車牌) 
+    function generateReportImage(type) {
+        if (!plateImg.src || plateImg.style.display === 'none') {
+            alert('請先擷取車牌特寫！');
+            return;
+        }
+        if (!video.src) return;
+        video.pause();
+
+        finalCanvas.width = video.videoWidth;
+        finalCanvas.height = video.videoHeight;
+        const ctx = finalCanvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, finalCanvas.width, finalCanvas.height);
+
+        const position = platePositionSelect.value;
+        const scalePercent = plateScaleInput.value / 100; 
+        const margin = 20;
+        
+        const tempPlateImg = new Image();
+        tempPlateImg.src = plateImg.src;
+
+        tempPlateImg.onload = () => {
+            const originalPlateW = tempPlateImg.width;
+            const originalPlateH = tempPlateImg.height;
+
+            let displayW = finalCanvas.width * scalePercent;
+            let displayH = (displayW / originalPlateW) * originalPlateH;
+            
+            let posX, posY;
+
+            switch (position) {
+                case 'topRight':
+                    posX = finalCanvas.width - displayW - margin;
+                    posY = margin;
+                    break;
+                case 'topLeft':
+                    posX = margin;
+                    posY = margin;
+                    break;
+                case 'bottomLeft':
+                    posX = margin;
+                    posY = finalCanvas.height - displayH - margin;
+                    break;
+                case 'bottomRight':
+                default:
+                    posX = finalCanvas.width - displayW - margin;
+                    posY = finalCanvas.height - displayH - margin;
+                    break;
+            }
+
+            ctx.strokeStyle = "red";
+            ctx.lineWidth = 5;
+            ctx.strokeRect(posX, posY, displayW, displayH);
+            ctx.drawImage(tempPlateImg, posX, posY, displayW, displayH);
+
+            if (type === 'before') {
+                document.getElementById('imgBefore').src = finalCanvas.toDataURL('image/jpeg');
+            } else {
+                document.getElementById('imgAfter').src = finalCanvas.toDataURL('image/jpeg');
+            }
+        };
+    }
+
+    // 4. 下載功能
+    function downloadImg(elementId, filename) {
+        const link = document.createElement('a');
+        link.download = filename;
+        link.href = document.getElementById(elementId).src;
+        link.click();
+    }
+  
+    function openGoogleMap() {
+        // 獲取輸入框中的地址
+        const address = document.getElementById('address').value;
+        let url = 'https://www.google.com/maps/place/';
+        // 如果使用者已經輸入了地址，就直接搜尋該地址
+        if (address) {
+            url = `https://www.google.com/maps/place/${encodeURIComponent(address)}`;
+        }
+        window.open(url, '_blank');
+    }
+</script>
+
+</body>
+</html>
