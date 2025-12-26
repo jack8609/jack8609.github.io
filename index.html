@@ -1,347 +1,651 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
-<head>
+  <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>違規檢舉小幫手</title>
+    <title>違規檢舉小幫手 - 強化斜角版</title>
     <style>
-        body { font-family: sans-serif; background: #f4f4f9; padding: 20px; line-height: 1.6; }
-        .container { max-width: 900px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        h1 { color: #333; text-align: center; }
-        .section { margin-bottom: 30px; border-bottom: 1px solid #eee; padding-bottom: 20px; }
-        video { width: 100%; border: 1px solid #ccc; border-radius: 4px; }
-        .controls { margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap; }
-        button { padding: 10px 15px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; }
-        button:hover { background: #0056b3; }
-        button.secondary { background: #6c757d; }
-        canvas { display: none; } /* 隱藏處理用的畫布 */
-        .preview-area { display: flex; gap: 10px; margin-top: 15px; }
-        .preview-box { border: 1px solid #ddd; padding: 5px; text-align: center; width: 45%; }
-        .preview-box img { width: 100%; height: auto; }
-        
-        #staticImageContainer { position: relative; cursor: crosshair; margin-top: 15px; }
-        #staticImage { max-width: 100%; height: auto; display: none; }
-        #selectionBox {
-            position: absolute;
-            border: 2px solid red;
-            background: rgba(255, 0, 0, 0.1);
-            display: none;
-            pointer-events: none;
-        }
-        .options-group { margin-bottom: 15px; }
-        .options-group label { display: block; margin-bottom: 5px; }
+      body { font-family: sans-serif; background: #f4f4f9; padding: 20px; line-height: 1.6; }
+      .container { max-width: 900px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+      h1 { color: #333; text-align: center; }
+      .section { margin-bottom: 30px; border-bottom: 1px solid #eee; padding-bottom: 20px; }
+      video { width: 100%; border: 1px solid #ccc; border-radius: 4px; }
+      .controls { margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+      button { padding: 10px 15px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; }
+      button:hover { background: #0056b3; }
+      button.secondary { background: #6c757d; }
+      canvas { display: none; } /* 隱藏處理用的畫布 */
+      /* 繪圖功能相關 CSS */
+      #staticImageContainer { 
+        position: relative; 
+        cursor: crosshair; 
+        margin-top: 15px; 
+      }
+      #staticImage { 
+        max-width: 100%; 
+        height: auto; 
+        display: none; 
+      }
+      #selectionBox {
+        position: absolute;
+        border: 2px solid red;
+        background: rgba(255, 0, 0, 0.1);
+        display: none;
+        pointer-events: none;
+      }
+      #drawingOverlay {
+        position: absolute;
+        display: none;
+        pointer-events: auto; /* 需要捕捉事件 */
+      }
+      .options-group { margin-bottom: 0px; display: flex; align-items: center; gap: 5px; }
+      .options-group label { margin-bottom: 0; font-size: 14px; }
+      .control-group-inline { display: flex; align-items: center; gap: 10px; }
+      /* 橫向排列容器樣式 */
+      #drawingOptionsContainer {
+        /* *** 修正: 確保預設是隱藏的，JS 會在需要時切換為 flex *** */
+        display: none; 
+        background: #f9f9f9;
+        padding: 10px;
+        border-radius: 5px;
+        margin-top: 10px;
+        flex-wrap: wrap;
+        gap: 15px;
+        align-items: center;
+      }
+      /* 車牌預覽區塊樣式 */
+      #platePreviewArea {
+        display: none; /* 預設隱藏，直到擷取完成 */
+        align-items: center;
+        gap: 15px;
+        margin-top: 15px;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+      }
+      #plateImg {
+        border: 2px solid red; 
+        max-width: 150px;
+        display: none;
+      }
+      /* 新增的截圖展示區塊樣式 */
+      #generatedImagesArea {
+        margin-top: 30px;
+        border-top: 2px solid #007bff;
+        padding-top: 20px;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+        gap: 15px;
+      }
+      #generatedImagesArea h3 {
+          grid-column: 1 / -1;
+      }
+      .generated-image-card {
+        padding: 10px;
+        border: 1px solid #ccc;
+        border-radius: 5px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        position: relative;
+        background: #fff;
+      }
+      .generated-image-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          width: 100%;
+          margin-bottom: 10px;
+      }
+      .generated-image-card img {
+        max-width: 100%;
+        height: auto;
+        cursor: pointer;
+      }
+      .generated-image-card button.download-btn {
+        right: 10px;
+        top: 10px;
+        padding: 5px 10px;
+        z-index: 10;
+      }
+      /* 懸停預覽視窗的 CSS 樣式 */
+      .image-preview-popup {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        max-width: 90vw;
+        max-height: 90vh;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        border: 2px solid #007bff;
+        z-index: 100;
+        display: none;
+        background: white;
+        padding: 10px;
+        border-radius: 8px;
+      }
+      .image-preview-popup img {
+          max-width: 100%;
+          max-height: 100%;
+      }
     </style>
-</head>
-<body>
+  </head>
+  <body>
     <div class="container">
-        <h1>違規檢舉小幫手</h1>
-        <div class="section">
-            <h3>第一步：載入違規影片</h3>
-            <input type="file" id="videoUpload" accept="video/*">
-            <div style="margin-top:10px;">
-                <!-- 確保有 playsinline 相容 iOS -->
-                <video id="mainVideo" controls playsinline webkit-playsinline></video>
-            </div>
+      <h1>違規檢舉小幫手</h1>
+      <div class="section">
+        <h3>第一步：載入違規影片</h3>
+        <input type="file" id="videoUpload" accept="video/*">
+        <div style="margin-top:10px;">
+          <video id="mainVideo" controls playsinline webkit-playsinline></video>
         </div>
-        <div class="section">
-            <h3>第二步：擷取車牌特寫</h3>
-            <p>請將影片停在車牌清晰處，點擊下方按鈕開始，然後在靜態圖片上拖拉框選車牌範圍 (放開滑鼠即完成擷取)。</p>
-            <button onclick="startLicensePlateCrop()">開始擷取並框選車牌位置</button>
-            <div id="staticImageContainer">
-                <img id="staticImage" src="#" alt="靜態截圖預覽">
-                <div id="selectionBox"></div>
-            </div>
-            <div id="platePreviewArea">
-                <p>目前車牌預覽：</p>
-                <img id="plateImg" style="border: 2px solid red; max-width: 200px; display: none;">
-            </div>
+      </div>
+      
+      <div class="section">
+        <h3>第二步：擷取車牌特寫與自訂標記</h3>
+        <p>請將影片停在車牌清晰處，使用以下功能進行編輯。</p>
+        
+        <div class="controls">
+          <button onclick="startLicensePlateCrop()">擷取車牌範圍</button>
+          <button onclick="toggleDrawingMode()" id="drawingModeBtn" class="secondary">啟用/關閉自訂紅框</button>
+          <button onclick="generateReportImage()">產生最終截圖並加入下方列表</button>
         </div>
-        <div class="section">
-            <h3>第三步：生成違規截圖</h3>
-            <p>移動影片時間軸，分別按下按鈕生成圖片。</p>
-            <div class="options-group">
-                <label for="platePosition">車牌擺放位置：</label>
-                <select id="platePosition">
-                    <option value="bottomRight">右下角</option>
-                    <option value="topRight">右上角</option>
-                    <option value="bottomLeft">左下角</option>
-                    <option value="topLeft">左上角</option>
-                </select>
+        <div id="drawingOptionsContainer">
+          <div class="options-group">
+            <label for="drawingShape">形狀:</label>
+            <select id="drawingShape">
+              <option value="rectangle">方框</option>
+              <option value="circle">圓框</option>
+            </select>
+          </div>
+          <div class="options-group">
+            <label for="lineThickness">粗細(px):</label>
+            <input type="range" id="lineThickness" min="1" max="20" value="5" oninput="document.getElementById('thicknessValue').textContent = this.value + 'px'">
+            <span id="thicknessValue">5px</span>
+          </div>
+          <div class="options-group">
+            <div class="control-group-inline">
+              <input type="checkbox" id="enableRotation"> 
+              <label for="enableRotation">傾斜</label>
             </div>
-            <div class="options-group">
-                <label for="plateScale">車牌縮放大小 (%)：<span id="scaleValue">30%</span></label>
-                <input type="range" id="plateScale" min="10" max="50" value="30" oninput="document.getElementById('scaleValue').textContent = this.value + '%'">
-            </div>
-            <div class="controls">
-                <button onclick="generateReportImage('before')">1. 生成「違規前」圖片</button>
-                <button onclick="generateReportImage('after')">2. 生成「違規後」圖片</button>
-            </div>
-            <div class="preview-area">
-                <div class="preview-box">
-                    <span>違規前預覽</span>
-                    <img id="imgBefore">
-                    <button class="secondary" onclick="downloadImg('imgBefore', 'before.jpg')">下載此圖</button>
-                </div>
-                <div class="preview-box">
-                    <span>違規後預覽</span>
-                    <img id="imgAfter">
-                    <button class="secondary" onclick="downloadImg('imgAfter', 'after.jpg')">下載此圖</button>
-                </div>
-            </div>
+          </div>
+          
+          <button onclick="clearAllDrawings()" class="secondary">清除所有紅框</button>
         </div>
-        <div class="section">
-            <h3>第四步：查詢違規地址</h3>
-            <input type="text" id="address" placeholder="先輸入地址，或直接點按鈕開啟地圖...">
-            <!-- 移除 onclick，改用 JavaScript EventListener 處理 -->
-            <button class="secondary" id="openMapBtn">開啟 Google Map 查詢地址</button>
+        <div id="platePreviewArea">
+          <p style="margin: 0;">車牌預覽 (小圖):</p>
+          <img id="plateImg" src="#" alt="車牌預覽圖">
+          <div class="options-group">
+            <label for="platePosition">位置:</label>
+            <select id="platePosition">
+              <option value="bottomRight">右下角</option>
+              <option value="topRight">右上角</option>
+              <option value="bottomLeft">左下角</option>
+              <option value="topLeft">左上角</option>
+            </select>
+          </div>
+          <div class="options-group">
+            <label for="plateScale">縮放(%):</label>
+            <input type="range" id="plateScale" min="10" max="50" value="30" oninput="document.getElementById('scaleValue').textContent = this.value + '%'">
+            <span id="scaleValue">30%</span>
+          </div>
         </div>
+        <div id="staticImageContainer">
+          <img id="staticImage" src="#" alt="靜態截圖預覽">
+          <div id="selectionBox"></div>
+          <canvas id="drawingOverlay"></canvas>
+        </div>
+        
+      </div>
+      
+      <div id="generatedImagesArea">
+        <h3>已生成的違規圖片列表</h3>
+      </div>
+
+      <!-- 第三步移到底部 -->
+      <div class="section">
+        <h3>第三步：查詢違規地址 (原第四步)</h3>
+        <input type="text" id="address" placeholder="先輸入地址，或直接點按鈕開啟地圖...">
+        <button class="secondary" id="openMapBtn">開啟 Google Map 查詢地址</button>
+      </div>
+
     </div>
+    <!-- 新增浮動預覽視窗的 HTML 結構 -->
+    <div class="image-preview-popup" id="previewPopup">
+        <img id="previewImage" src="#" alt="預覽大圖">
+    </div>
+
     <script>
-        const video = document.getElementById('mainVideo');
-        const staticImage = document.getElementById('staticImage');
-        const staticImageContainer = document.getElementById('staticImageContainer');
-        const selectionBox = document.getElementById('selectionBox');
-        const plateImg = document.getElementById('plateImg');
-        const videoUpload = document.getElementById('videoUpload');
-        const platePositionSelect = document.getElementById('platePosition'); 
-        const plateScaleInput = document.getElementById('plateScale'); 
-        let finalCanvas = document.createElement('canvas');
-        let startX, startY, currentX, currentY;
-        let isDrawing = false;
-        let finalCropCoords = {};
-        let dragThreshold = 5; // 設定一個最小拖曳距離閾值 (例如 5 像素)
+      // --- 變數宣告與初始化 ---
+      const video = document.getElementById('mainVideo');
+      const staticImage = document.getElementById('staticImage');
+      const staticImageContainer = document.getElementById('staticImageContainer');
+      const selectionBox = document.getElementById('selectionBox');
+      const plateImg = document.getElementById('plateImg');
+      const videoUpload = document.getElementById('videoUpload');
+      const platePositionSelect = document.getElementById('platePosition'); 
+      const plateScaleInput = document.getElementById('plateScale'); 
+      const generatedImagesArea = document.getElementById('generatedImagesArea');
+      const previewPopup = document.getElementById('previewPopup');
+      const previewImage = document.getElementById('previewImage');
+      const drawingOverlay = document.getElementById('drawingOverlay');
+      const drawingShapeSelect = document.getElementById('drawingShape');
+      const lineThicknessInput = document.getElementById('lineThickness');
+      const drawingModeBtn = document.getElementById('drawingModeBtn');
+      const rotationCheckbox = document.getElementById('enableRotation');
+      const drawingOptionsContainer = document.getElementById('drawingOptionsContainer');
+      const platePreviewArea = document.getElementById('platePreviewArea');
 
-        // 影片上傳事件監聽器：增加 video.load()
-        videoUpload.addEventListener('change', function() {
-            const file = this.files[0];
-            if (file) {
-                const url = URL.createObjectURL(file);
-                video.src = url;
-                video.load(); // 確保手機版正確載入
-                staticImage.style.display = 'none';
-                plateImg.style.display = 'none';
-            }
-        });
+      let finalCanvas = document.createElement('canvas');
+      let startX, startY, currentX, currentY;
+      let isDrawing = false;
+      let finalCropCoords = {};
+      let dragThreshold = 5; 
+      let isDrawingMode = false;
+      let drawnShapes = []; 
+      let plateImageInMemory = null; // 用於儲存擷取的車牌影像物件
 
-        function startLicensePlateCrop() {
-            if (!video.src || video.videoWidth === 0) {
-                alert("請先上傳並播放影片！");
-                return;
-            }
-            video.pause(); 
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = video.videoWidth;
-            tempCanvas.height = video.videoHeight;
-            const ctx = tempCanvas.getContext('2d');
-            ctx.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
-            const dataURL = tempCanvas.toDataURL('image/jpeg');
-            staticImage.src = dataURL;
-            staticImage.style.display = 'block'; 
-            selectionBox.style.display = 'none';
+      // 監聽車牌位置和縮放的變化
+      platePositionSelect.addEventListener('change', drawOverlayContent);
+      plateScaleInput.addEventListener('input', drawOverlayContent);
+      
+      // --- 影片上傳功能 ---
+      videoUpload.addEventListener('change', function() {
+        const file = this.files[0];
+        if (file) {
+          const url = URL.createObjectURL(file);
+          video.src = url;
+          video.load(); 
+          staticImage.style.display = 'none';
+          platePreviewArea.style.display = 'none';
+          plateImageInMemory = null;
         }
-
-        // 輔助函數：用於鎖定和解鎖頁面捲動
-        function preventDefaultScroll(e) {
-            e.preventDefault();
+      });
+      // --- 開始擷取車牌畫面功能 ---
+      function startLicensePlateCrop() {
+        if (!video.src || video.videoWidth === 0) {
+          alert("請先上傳並播放影片！");
+          return;
         }
+        video.pause(); 
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = video.videoWidth;
+        tempCanvas.height = video.videoHeight;
+        const ctx = tempCanvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
+        const dataURL = tempCanvas.toDataURL('image/jpeg');
+        staticImage.src = dataURL;
+        staticImage.style.display = 'block'; 
+        selectionBox.style.display = 'none';
+        
+        // 設定繪圖畫布尺寸並顯示
+        setupDrawingOverlay();
+        // 確保切換回車牌擷取模式時，關閉繪圖模式介面選項
+        if (isDrawingMode) toggleDrawingMode();
+      }
+      function preventDefaultScroll(e) { e.preventDefault(); }
+      staticImageContainer.addEventListener('pointerdown', (e) => {
+        if (e.pointerType === 'touch' && e.touches && e.touches.length > 1) return;
+        if (e.button !== 0 && e.pointerType !== 'touch') return;
+        if (isDrawingMode) return;
+        document.body.addEventListener('touchmove', preventDefaultScroll, { passive: false });
+        
+        e.preventDefault(); 
+        e.stopPropagation(); 
+        isDrawing = true;
+        const rect = staticImage.getBoundingClientRect(); 
+        startX = Math.round(e.clientX - rect.left);
+        startY = Math.round(e.clientY - rect.top);
+        selectionBox.style.display = 'block';
+        selectionBox.style.left = startX + 'px';
+        selectionBox.style.top = startY + 'px';
+        selectionBox.style.width = '0px';
+        selectionBox.style.height = '0px';
+        if (staticImageContainer.setPointerCapture) {
+          staticImageContainer.setPointerCapture(e.pointerId);
+        }
+      }, { passive: false });
+      staticImageContainer.addEventListener('pointermove', (e) => {
+        if (!isDrawing || isDrawingMode) return;
+        e.preventDefault(); 
+        e.stopPropagation();
+        const rect = staticImage.getBoundingClientRect();
+        currentX = Math.round(e.clientX - rect.left);
+        currentY = Math.round(e.clientY - rect.top);
+        const width = currentX - startX;
+        const height = currentY - startY;
+        selectionBox.style.left = (width > 0 ? startX : currentX) + 'px';
+        selectionBox.style.top = (height > 0 ? startY : currentY) + 'px';
+        selectionBox.style.width = Math.abs(width) + 'px';
+        selectionBox.style.height = Math.abs(height) + 'px';
+      }, { passive: false });
+      const endDrawing = (e) => {
+        if (!isDrawing || isDrawingMode) return;
+        isDrawing = false;
+        document.body.removeEventListener('touchmove', preventDefaultScroll, { passive: false });
+        if (staticImageContainer.releasePointerCapture) {
+          staticImageContainer.releasePointerCapture(e.pointerId);
+        }
+        selectionBox.style.display = 'none'; 
+        const actualDragDistanceX = Math.abs(currentX - startX);
+        const actualDragDistanceY = Math.abs(currentY - startY);
+        if (actualDragDistanceX < dragThreshold && actualDragDistanceY < dragThreshold) {
+          console.log("Drag distance too short, likely a tap. Skipping crop.");
+          return;
+        }
+        const displayWidth = staticImage.clientWidth;
+        const displayHeight = staticImage.clientHeight;
+        const actualWidth = video.videoWidth;
+        const actualHeight = video.videoHeight;
+        const scaleX = actualWidth / displayWidth;
+        const scaleY = actualHeight / displayHeight;
+        const selectionLeft = Math.min(startX, currentX);
+        const selectionTop = Math.min(startY, currentY);
+        const selectionRight = Math.max(startX, currentX);
+        const selectionBottom = Math.max(startY, currentY);
+        finalCropCoords = {
+          x1: Math.round(selectionLeft * scaleX),
+          y1: Math.round(selectionTop * scaleY),
+          x2: Math.round(selectionRight * scaleX),
+          y2: Math.round(selectionBottom * scaleY)
+        };
+        confirmCropArea();
+      };
+      staticImageContainer.addEventListener('pointerup', endDrawing);
+      staticImageContainer.addEventListener('pointercancel', endDrawing);
 
-        staticImageContainer.addEventListener('pointerdown', (e) => {
-            if (e.pointerType === 'touch' && e.touches && e.touches.length > 1) return;
-            if (e.button !== 0 && e.pointerType !== 'touch') return;
+      function confirmCropArea() {
+        const cropWidth = finalCropCoords.x2 - finalCropCoords.x1;
+        const cropHeight = finalCropCoords.y2 - finalCropCoords.y1;
+        if (cropWidth <= 0 || cropHeight <= 0) {
+          console.error("Crop dimensions are invalid (zero or negative).");
+          return; 
+        }
+        const plateCanvas = document.createElement('canvas'); 
+        plateCanvas.width = cropWidth;
+        plateCanvas.height = cropHeight;
+        const pCtx = plateCanvas.getContext('2d');
+        try {
+          pCtx.drawImage(
+            video, 
+            finalCropCoords.x1, finalCropCoords.y1, cropWidth, cropHeight, 
+            0, 0, cropWidth, cropHeight
+          );
+          plateImageInMemory = new Image();
+          plateImageInMemory.src = plateCanvas.toDataURL('image/jpeg');
 
-            // [關鍵修正點 1] 開始拖曳時，在整個文件上監聽並阻止觸控捲動
-            document.body.addEventListener('touchmove', preventDefaultScroll, { passive: false });
+          plateImg.src = plateImageInMemory.src;
+          plateImg.style.display = 'block';
+          platePreviewArea.style.display = 'flex';
+          
+          plateImageInMemory.onload = drawOverlayContent;
 
-            e.preventDefault(); 
-            e.stopPropagation(); 
-            isDrawing = true;
+          console.log("Successfully cropped image and saved to memory.");
+        } catch (e) {
+          console.error("Error during pCtx.drawImage:", e);
+        }
+      }
+      // --- 產生最終報表圖片並加入列表 ---
+      function generateReportImage() {
+        if (!plateImageInMemory) {
+          alert('請先擷取車牌特寫！');
+          return;
+        }
+        if (!video.src) return;
+        video.pause();
+        
+        finalCanvas.width = video.videoWidth;
+        finalCanvas.height = video.videoHeight;
+        const ctx = finalCanvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, finalCanvas.width, finalCanvas.height);
+        
+        drawAllUserShapes(ctx, finalCanvas.width, finalCanvas.height, false);
+        drawPlateOnCanvas(ctx, finalCanvas.width, finalCanvas.height, false);
 
-            const rect = staticImage.getBoundingClientRect(); 
-            startX = Math.round(e.clientX - rect.left);
-            startY = Math.round(e.clientY - rect.top);
+        addImageToGeneratedList(finalCanvas.toDataURL('image/jpeg'));
+      }
+      function addImageToGeneratedList(imageDataUrl) {
+        const card = document.createElement('div');
+        card.className = 'generated-image-card';
+        
+        const header = document.createElement('div');
+        header.className = 'generated-image-header';
+        
+        const timestamp = new Date().toLocaleString();
+        const info = document.createElement('span');
+        info.textContent = `產生時間: ${timestamp}`;
+        
+        const downloadBtn = document.createElement('button');
+        downloadBtn.textContent = '下載此圖';
+        downloadBtn.className = 'secondary download-btn';
+        
+        const img = document.createElement('img');
+        img.src = imageDataUrl;
+        const imgId = `genImg_${Date.now()}`;
+        img.id = imgId;
 
-            selectionBox.style.display = 'block';
-            selectionBox.style.left = startX + 'px';
-            selectionBox.style.top = startY + 'px';
-            selectionBox.style.width = '0px';
-            selectionBox.style.height = '0px';
+        downloadBtn.onclick = () => downloadImg(imgId, `report_${Date.now()}.jpg`);
+        img.addEventListener('mouseenter', (e) => showPreview(e, imageDataUrl));
+        img.addEventListener('mouseleave', hidePreview);
+        img.addEventListener('click', (e) => showPreview(e, imageDataUrl));
 
-            if (staticImageContainer.setPointerCapture) {
-                staticImageContainer.setPointerCapture(e.pointerId);
-            }
-        }, { passive: false });
+        header.appendChild(info);
+        header.appendChild(downloadBtn);
+        card.appendChild(header);
+        card.appendChild(img);
+        
+        generatedImagesArea.appendChild(card);
+        card.scrollIntoView({ behavior: 'smooth' });
+      }
+      // --- 下載功能與 Google Map 功能 ---
+      function downloadImg(elementId, filename) {
+        const link = document.createElement('a');
+        link.download = filename;
+        link.href = document.getElementById(elementId).src || document.querySelector(`#${elementId}`).src;
+        link.click();
+      }
+      const openMapBtn = document.getElementById('openMapBtn');
+      openMapBtn.addEventListener('click', function openGoogleMap() {
+        const address = document.getElementById('address').value;
+        let url = 'www.google.com';
+        if (address) {
+          url = `www.google.com${encodeURIComponent(address)}`;
+        }
+        window.open(url, '_blank');
+      });
+      // ===============================================
+      // === 自訂繪圖與即時預覽功能 JavaScript 實作 ===
+      // ===============================================
 
-        staticImageContainer.addEventListener('pointermove', (e) => {
-            if (!isDrawing) return;
-            // 這裡也需要 preventDefault 防止其他預設行為
-            e.preventDefault(); 
-            e.stopPropagation();
-
-            const rect = staticImage.getBoundingClientRect();
-            currentX = Math.round(e.clientX - rect.left);
-            currentY = Math.round(e.clientY - rect.top);
-
-            const width = currentX - startX;
-            const height = currentY - startY;
-            selectionBox.style.left = (width > 0 ? startX : currentX) + 'px';
-            selectionBox.style.top = (height > 0 ? startY : currentY) + 'px';
-            selectionBox.style.width = Math.abs(width) + 'px';
-            selectionBox.style.height = Math.abs(height) + 'px';
-        }, { passive: false });
-
-        const endDrawing = (e) => {
-            if (!isDrawing) return;
-            isDrawing = false;
-
-            // [關鍵修正點 2] 結束拖曳時，移除全局的觸控捲動阻止
-            document.body.removeEventListener('touchmove', preventDefaultScroll, { passive: false });
-
-            if (staticImageContainer.releasePointerCapture) {
-                staticImageContainer.releasePointerCapture(e.pointerId);
-            }
-
-            selectionBox.style.display = 'none'; 
-
-            const actualDragDistanceX = Math.abs(currentX - startX);
-            const actualDragDistanceY = Math.abs(currentY - startY);
-
-            if (actualDragDistanceX < dragThreshold && actualDragDistanceY < dragThreshold) {
-                console.log("Drag distance too short, likely a tap. Skipping crop.");
-                return;
-            }
-            
+      function drawOverlayContent() {
+        const ctx = drawingOverlay.getContext('2d');
+        ctx.clearRect(0, 0, drawingOverlay.width, drawingOverlay.height);
+        if (drawnShapes.length > 0) {
             const displayWidth = staticImage.clientWidth;
             const displayHeight = staticImage.clientHeight;
-            const actualWidth = video.videoWidth;
-            const actualHeight = video.videoHeight;
-            const scaleX = actualWidth / displayWidth;
-            const scaleY = actualHeight / displayHeight;
-            const selectionLeft = Math.min(startX, currentX);
-            const selectionTop = Math.min(startY, currentY);
-            const selectionRight = Math.max(startX, currentX);
-            const selectionBottom = Math.max(startY, currentY);
-            
-            finalCropCoords = {
-                x1: Math.round(selectionLeft * scaleX),
-                y1: Math.round(selectionTop * scaleY),
-                x2: Math.round(selectionRight * scaleX),
-                y2: Math.round(selectionBottom * scaleY)
-            };
-            
-            console.log("Coordinates calculated:", finalCropCoords);
-            confirmCropArea();
+            drawAllUserShapes(ctx, displayWidth, displayHeight, true); 
+        }
+        if (plateImageInMemory) {
+            drawPlateOnCanvas(ctx, drawingOverlay.width, drawingOverlay.height, true);
+        }
+      }
+
+      function setupDrawingOverlay() {
+        if (staticImage.style.display === 'none') return;
+        const rect = staticImage.getBoundingClientRect();
+        drawingOverlay.width = rect.width;
+        drawingOverlay.height = rect.height;
+        drawingOverlay.style.left = rect.left - staticImageContainer.getBoundingClientRect().left + 'px';
+        drawingOverlay.style.top = rect.top - staticImageContainer.getBoundingClientRect().top + 'px';
+        drawingOverlay.style.display = 'block';
+        drawingOverlay.addEventListener('pointerdown', startUserDrawing);
+        drawingOverlay.addEventListener('pointermove', drawUserMoving);
+        drawingOverlay.addEventListener('pointerup', stopUserDrawing);
+        drawingOverlay.addEventListener('pointercancel', stopUserDrawing);
+        drawOverlayContent();
+      }
+      
+      function drawPlateOnCanvas(ctx, targetW, targetH, isOverlay = false) {
+          if (!plateImageInMemory) return;
+          const position = platePositionSelect.value;
+          const scalePercent = plateScaleInput.value / 100; 
+          const margin = 20;
+
+          const originalPlateW = plateImageInMemory.width;
+          const originalPlateH = plateImageInMemory.height;
+
+          let displayW = targetW * scalePercent;
+          let displayH = (displayW / originalPlateW) * originalPlateH;
+          
+          let posX, posY;
+          switch (position) {
+            case 'topRight':
+              posX = targetW - displayW - margin;
+              posY = margin;
+              break;
+            case 'topLeft':
+              posX = margin;
+              posY = margin;
+              break;
+            case 'bottomLeft':
+              posX = margin;
+              posY = targetH - displayH - margin;
+              break;
+            case 'bottomRight':
+            default:
+              posX = targetW - displayW - margin;
+              posY = targetH - displayH - margin;
+              break;
+          }
+
+          ctx.strokeStyle = "red";
+          ctx.lineWidth = isOverlay ? 3 : 5;
+          ctx.strokeRect(posX, posY, displayW, displayH);
+          ctx.drawImage(plateImageInMemory, posX, posY, displayW, displayH);
+      }
+
+
+      function toggleDrawingMode() {
+        isDrawingMode = !isDrawingMode;
+        if (isDrawingMode) {
+          drawingModeBtn.textContent = "關閉自訂紅框";
+          drawingModeBtn.style.background = "#dc3545";
+          setupDrawingOverlay();
+          selectionBox.style.display = 'none';
+          drawingOptionsContainer.style.display = 'flex';
+        } else {
+          drawingModeBtn.textContent = "啟用/關閉自訂紅框";
+          drawingModeBtn.style.background = "#6c757d";
+          drawingOptionsContainer.style.display = 'none'; 
+          clearAllDrawings();
+          drawOverlayContent();
+        }
+      }
+      
+      let currentShape = null;
+      function startUserDrawing(e) {
+        e.preventDefault();
+        isDrawing = true;
+        const rect = drawingOverlay.getBoundingClientRect();
+        startX = e.clientX - rect.left;
+        startY = e.clientY - rect.top;
+        currentShape = {
+          type: drawingShapeSelect.value,
+          thickness: lineThicknessInput.value,
+          startX: startX,
+          startY: startY,
+          endX: startX,
+          endY: startY,
+          angle: 0,
+          width: 0,
+          height: 0
         };
+      }
+      function drawUserMoving(e) {
+        if (!isDrawing || !currentShape) return;
+        e.preventDefault();
+        const rect = drawingOverlay.getBoundingClientRect();
+        currentX = e.clientX - rect.left;
+        currentY = e.clientY - rect.top;
+        const dx = currentX - startX;
+        const dy = currentY - startY;
+        if (rotationCheckbox.checked) {
+          currentShape.width = Math.sqrt(dx * dx + dy * dy);
+          currentShape.height = currentShape.width * 0.5; 
+          currentShape.angle = Math.atan2(dy, dx);
+        } else {
+          currentShape.width = Math.abs(dx);
+          currentShape.height = Math.abs(dy);
+          currentShape.angle = 0;
+        }
+        currentShape.endX = currentX;
+        currentShape.endY = currentY;
+        drawOverlayContent(); 
+        const ctx = drawingOverlay.getContext('2d');
+        drawShape(ctx, currentShape, 1, 1);
+      }
+      function stopUserDrawing(e) {
+        if (!isDrawing || !currentShape) return;
+        isDrawing = false;
+        if (currentShape.width > dragThreshold && currentShape.height > dragThreshold) {
+          drawnShapes.push(currentShape);
+        }
+        currentShape = null;
+        drawOverlayContent();
+      }
+      function clearAllDrawings() {
+        drawnShapes = [];
+        drawOverlayContent();
+      }
+      function drawShape(ctx, shape, scaleX, scaleY) {
+        ctx.strokeStyle = "red";
+        ctx.lineWidth = shape.thickness * scaleX;
+        ctx.save(); 
+        const centerX = (shape.startX + (shape.endX - shape.startX) / 2) * scaleX;
+        const centerY = (shape.startY + (shape.endY - shape.startY) / 2) * scaleY;
+        ctx.translate(centerX, centerY);
+        ctx.rotate(shape.angle);
+        if (shape.type === 'rectangle') {
+          const w = shape.width * scaleX;
+          const h = shape.height * scaleY;
+          ctx.strokeRect(-w / 2, -h / 2, w, h);
+        } else if (shape.type === 'circle') {
+          const radiusX = (shape.width / 2) * scaleX;
+          const radiusY = (shape.height / 2) * scaleY;
+          ctx.scale(1, radiusY / radiusX);
+          ctx.beginPath();
+          ctx.arc(0, 0, radiusX, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.restore(); 
+      }
+      
+      function drawAllUserShapes(ctx, finalW, finalH, isOverlay = false) {
+        if (drawnShapes.length === 0) return;
+        
+        let scaleX = 1, scaleY = 1;
+        if (!isOverlay) {
+             const displayWidth = staticImage.clientWidth;
+             const displayHeight = staticImage.clientHeight;
+             scaleX = finalW / displayWidth;
+             scaleY = finalH / displayHeight;
+        }
 
-        staticImageContainer.addEventListener('pointerup', endDrawing);
-        staticImageContainer.addEventListener('pointercancel', endDrawing);
-
-        // 執行最終裁切 (confirmCropArea，從 Video Source 繪製)
-        function confirmCropArea() {
-            const cropWidth = finalCropCoords.x2 - finalCropCoords.x1;
-            const cropHeight = finalCropCoords.y2 - finalCropCoords.y1;
-            if (cropWidth <= 0 || cropHeight <= 0) {
-                // *** DEBUG LOG 2 (更新) ***
-                console.error("Crop dimensions are invalid (zero or negative). Not drawing to canvas.");
-                return; 
-            }
-            const plateCanvas = document.createElement('canvas'); 
-            plateCanvas.width = cropWidth;
-            plateCanvas.height = cropHeight;
-            const pCtx = plateCanvas.getContext('2d');
-            
-            try {
-                pCtx.drawImage(
-                    video, 
-                    finalCropCoords.x1, finalCropCoords.y1, cropWidth, cropHeight, 
-                    0, 0, cropWidth, cropHeight 
-                );
-                
-                plateImg.src = plateCanvas.toDataURL('image/jpeg');
-                plateImg.style.display = 'block';
-                // *** DEBUG LOG 3 (更新) ***
-                console.log("Successfully drew image to canvas and updated preview.");
-            } catch (e) {
-                // *** DEBUG LOG 4 (更新) ***
-                console.error("Error during pCtx.drawImage:", e);
-            }
-        }
-        
-        // 3. 合成大圖 (大圖 + 角落車牌) 
-        function generateReportImage(type) {
-            if (!plateImg.src || plateImg.style.display === 'none') {
-                alert('請先擷取車牌特寫！');
-                return;
-            }
-            if (!video.src) return;
-            video.pause();
-            finalCanvas.width = video.videoWidth;
-            finalCanvas.height = video.videoHeight;
-            const ctx = finalCanvas.getContext('2d');
-            ctx.drawImage(video, 0, 0, finalCanvas.width, finalCanvas.height);
-            const position = platePositionSelect.value;
-            const scalePercent = plateScaleInput.value / 100; 
-            const margin = 20;
-            
-            const tempPlateImg = new Image();
-            tempPlateImg.src = plateImg.src;
-            tempPlateImg.onload = () => {
-                const originalPlateW = tempPlateImg.width;
-                const originalPlateH = tempPlateImg.height;
-                let displayW = finalCanvas.width * scalePercent;
-                let displayH = (displayW / originalPlateW) * originalPlateH;
-                
-                let posX, posY;
-                switch (position) {
-                    case 'topRight':
-                        posX = finalCanvas.width - displayW - margin;
-                        posY = margin;
-                        break;
-                    case 'topLeft':
-                        posX = margin;
-                        posY = margin;
-                        break;
-                    case 'bottomLeft':
-                        posX = margin;
-                        posY = finalCanvas.height - displayH - margin;
-                        break;
-                    case 'bottomRight':
-                    default:
-                        posX = finalCanvas.width - displayW - margin;
-                        posY = finalCanvas.height - displayH - margin;
-                        break;
-                }
-                ctx.strokeStyle = "red";
-                ctx.lineWidth = 5;
-                ctx.strokeRect(posX, posY, displayW, displayH);
-                ctx.drawImage(tempPlateImg, posX, posY, displayW, displayH);
-                if (type === 'before') {
-                    document.getElementById('imgBefore').src = finalCanvas.toDataURL('image/jpeg');
-                } else {
-                    document.getElementById('imgAfter').src = finalCanvas.toDataURL('image/jpeg');
-                }
-            };
-        }
-        
-        // 4. 下載功能
-        function downloadImg(elementId, filename) {
-            const link = document.createElement('a');
-            link.download = filename;
-            link.href = document.getElementById(elementId).src;
-            link.click();
-        }
-        
-        // Google Map 功能，使用 addEventListener 綁定
-        const openMapBtn = document.getElementById('openMapBtn');
-        openMapBtn.addEventListener('click', function openGoogleMap() {
-            // 獲取輸入框中的地址
-            const address = document.getElementById('address').value;
-            let url = 'https://www.google.com/maps/place/';
-            // 如果使用者已經輸入了地址，就直接搜尋該地址
-            if (address) {
-                url = `https://www.google.com/maps/place/${encodeURIComponent(address)}`;
-            }
-            window.open(url, '_blank');
+        drawnShapes.forEach(shape => {
+          drawShape(ctx, shape, scaleX, scaleY);
         });
+      }
+      
+      function showPreview(event, imageUrl) {
+          previewImage.src = imageUrl;
+          previewPopup.style.display = 'block';
+          previewPopup.addEventListener('click', hidePreview);
+      }
+
+      function hidePreview() {
+          previewPopup.style.display = 'none';
+          previewPopup.removeEventListener('click', hidePreview);
+      }
     </script>
-</body>
+  </body>
 </html>
