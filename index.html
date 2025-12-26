@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>違規檢舉小幫手 - 強化斜角版</title>
+    <title>違規檢舉小幫手</title>
     <style>
       body { font-family: sans-serif; background: #f4f4f9; padding: 20px; line-height: 1.6; }
       .container { max-width: 900px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
@@ -20,6 +20,7 @@
         position: relative; 
         cursor: crosshair; 
         margin-top: 15px; 
+        touch-action: none; /* 修正: 停用觸控滾動 */
       }
       #staticImage { 
         max-width: 100%; 
@@ -55,8 +56,10 @@
       }
       /* 車牌預覽區塊樣式 */
       #platePreviewArea {
-        display: none; /* 預設隱藏，直到擷取完成 */
-        align-items: center;
+        display: flex; /* 預設隱藏交由 JS 控制，這裡確保 flex 佈局正確 */
+        flex-wrap: wrap;
+        justify-content: space-between; /* 讓內容兩端對齊 */
+        align-items: center; /* 垂直對齊項目 */
         gap: 15px;
         margin-top: 15px;
         padding: 10px;
@@ -64,11 +67,14 @@
         border-radius: 4px;
       }
       #plateImg {
-        border: 2px solid red; 
+        border: 2px solid red;
         max-width: 150px;
-        display: none;
+        display: none; /* 預設隱藏交由 JS 控制 */
+        max-width: 100%;
+        height: auto;
+        flex-shrink: 0;
       }
-      /* 新增的截圖展示區塊樣式 */
+      /* 主要導致版面超出的問題在這裡: 預設的 grid-template-columns */
       #generatedImagesArea {
         margin-top: 30px;
         border-top: 2px solid #007bff;
@@ -128,6 +134,32 @@
           max-width: 100%;
           max-height: 100%;
       }
+
+      /* 針對小螢幕（例如手機）的 Media Query */
+      @media (max-width: 600px) {
+        .container {
+          padding: 10px; /* 增加手機邊距，避免內容貼邊 */
+        }
+        #videoArea {
+          width: 100%; /* 在手機上使用 100% 寬度 */
+          margin: auto;
+        }
+        #platePreviewArea {
+          flex-direction: column; /* 在手機上垂直堆疊 */
+          align-items: flex-start;
+        }
+
+        /* 確保選項組件在手機上不會重疊 */
+        .options-group {
+          width: 100%;
+          margin-top: 10px;
+        }
+
+        /* Media Query 覆蓋全域設定，確保在手機上使用更小的 150px 最小值 */
+        #generatedImagesArea {
+          grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        }
+  }
     </style>
   </head>
   <body>
