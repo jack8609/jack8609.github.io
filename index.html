@@ -18,14 +18,14 @@
 
     <script type="module">
         // ✅ 修正點：必須加上 https://
-        import { FFmpeg } from "unpkg.com";
-        import { fetchFile, toBlobURL } from "unpkg.com";
+        import { FFmpeg } from "https://unpkg.com";
+        import { fetchFile, toBlobURL } from "https://unpkg.com";
 
         const ffmpeg = new FFmpeg();
 
         async function init() {
             // ✅ 修正點：必須加上 https://
-            const baseURL = 'unpkg.com';
+            const baseURL = 'https://unpkg.com';
             
             ffmpeg.on('log', ({ message }) => {
                 document.getElementById('log').innerText = message;
@@ -57,3 +57,4 @@
     </script>
 </body>
 </html>
+
