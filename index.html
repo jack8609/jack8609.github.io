@@ -27,57 +27,29 @@
   <p id="status">狀態：尚未載入 FFmpeg Core...</p>
   <div class="log" id="log"></div>
   <p id="out"></p>
+<script type="module">
+  import { FFmpeg } from "https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.15/dist/esm/index.js";
+  import { fetchFile, toBlobURL } from "https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.2/dist/esm/index.js";
 
-  <script type="module">
-    import { FFmpeg } from "https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.15/dist/esm/index.js";
-    import { fetchFile, toBlobURL } from "https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.2/dist/esm/index.js";
+  // ✅ 等 Service Worker 就緒（確保 COI）
+  await navigator.serviceWorker.ready;
 
-    const logEl = document.getElementById('log');
-    const statusEl = document.getElementById('status');
-    const outEl = document.getElementById('out');
+  const ffmpeg = new FFmpeg();
+  ffmpeg.on('log', ({ message }) => console.log(message));
 
-    const ffmpeg = new FFmpeg();
-    ffmpeg.on('log', ({ message }) => { logEl.textContent += message + "\n"; });
+  // 建議用 jsDelivr 作為來源，再轉 blob（同源）
+  const CORE_BASE = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd";
+  const FF_BASE   = "https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.15/dist/esm";
 
-    // ✅ 用 blob URL 載入 core / wasm / worker，避免 COEP 阻擋
-    const CORE_BASE = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd";
-    const FF_BASE   = "https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.15/dist/esm";
+  const coreURL   = await toBlobURL(`${CORE_BASE}/ffmpeg-core.js`,  'text/javascript');
+  const wasmURL   = await toBlobURL(`${CORE_BASE}/ffmpeg-core.wasm`, 'application/wasm');
+  const workerURL = await toBlobURL(`${FF_BASE}/worker.js`,          'text/javascript'); // ★ 關鍵
 
-    const coreURL   = await toBlobURL(`${CORE_BASE}/ffmpeg-core.js`,  'text/javascript');
-    const wasmURL   = await toBlobURL(`${CORE_BASE}/ffmpeg-core.wasm`, 'application/wasm');
-    const workerURL = await toBlobURL(`${FF_BASE}/worker.js`,          'text/javascript');
+  await ffmpeg.load({ coreURL, wasmURL, workerURL }); // ★ 三者都要給
 
-    statusEl.textContent = "狀態：正在載入 FFmpeg Core...";
-    await ffmpeg.load({ coreURL, wasmURL, workerURL });   // ← 關鍵：把 worker.js 也指定進來
-    statusEl.textContent = `狀態：FFmpeg Core 已載入。crossOriginIsolated=${self.crossOriginIsolated}`;
-
-    const fileInput = document.getElementById('file');
-
-    document.getElementById('btnTranscode').onclick = async () => {
-      outEl.textContent = ""; logEl.textContent = "";
-      const file = fileInput.files?.[0];
-      if (!file) { alert("請先選一個影片/音訊檔"); return; }
-
-      await ffmpeg.writeFile('input', await fetchFile(file));
-      await ffmpeg.exec(['-i', 'input', '-movflags', 'faststart', 'output.mp4']);
-
-      const data = await ffmpeg.readFile('output.mp4');
-      const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
-      outEl.innerHTML = `${url}下載 output.mp4</a>`;
-    };
-
-    document.getElementById('btnThumbnail').onclick = async () => {
-      outEl.textContent = ""; logEl.textContent = "";
-      const file = fileInput.files?.[0];
-      if (!file) { alert("請先選一個影片檔"); return; }
-
-      await ffmpeg.writeFile('in.mp4', await fetchFile(file));
-      await ffmpeg.exec(['-ss', '00:00:01', '-i', 'in.mp4', '-frames:v', '1', 'thumb.jpg']);
-
-      const jpg = await ffmpeg.readFile('thumb.jpg');
-      const url = URL.createObjectURL(new Blob([jpg.buffer], { type: 'image/jpeg' }));
-      outEl.innerHTML = `${url}`;
-    };
-  </script>
+  console.log('COI:', self.crossOriginIsolated); // 理想是 true
+  // 後續寫檔、exec、讀檔...
+</script>
 </body>
 </html>
+
