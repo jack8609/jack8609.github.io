@@ -1,3 +1,4 @@
+
 <!doctype html>
 <html lang="zh-Hant">
 <head>
@@ -7,8 +8,10 @@
 
   <!-- ✅ 正確：同源引入 coi-serviceworker，放在 head 最前面 -->
   <script src="./coi-serviceworker.min.js"></script>
+
   <!-- ✅ 避免 favicon 404 -->
-  <link rel="icon" href="data:,">
+  <link rel="icon" href="data:," />
+
   <style>
     body { font-family: system-ui, -apple-system, "Segoe UI", Roboto; margin: 2rem; }
     h1 { margin-top: 0; }
@@ -32,10 +35,12 @@
   <p id="out"></p>
 
   <script type="module">
-    // ✅ 以「本地檔」載入 ffmpeg 的 ESM 入口，避免 CDN 相對路徑把 worker 指到跨來源
+    // ✅ 完全本地：不使用 CDN 的 @ffmpeg/ffmpeg ESM 入口（我們自己提供所有模組）
     import { FFmpeg } from "./ffmpeg/index.js";
-    // ✅ 完全本地化：不用 @ffmpeg/util，改用原生 API 把 File 轉成 Uint8Array
+
+    // ✅ 完全本地：不用 @ffmpeg/util，直接用原生 API
     const fileToUint8Array = async (file) => new Uint8Array(await file.arrayBuffer());
+
     const statusEl = document.getElementById('status');
     const logEl = document.getElementById('log');
     const outEl = document.getElementById('out');
@@ -44,10 +49,15 @@
     const btnThumbnail = document.getElementById('btnThumbnail');
     const log = (msg) => { logEl.textContent += `\n${msg}`; };
 
+    // ✅ 用絕對 URL，避免 Worker 端的相對路徑解析錯誤
+    const ORIGIN = location.origin;
+    const CORE_JS   = `${ORIGIN}/core/ffmpeg-core.js`;
+    const CORE_WASM = `${ORIGIN}/core/ffmpeg-core.wasm`;
+    const WORKER_JS = `${ORIGIN}/ffmpeg/worker.js`;
+
     const start = async () => {
       try {
         statusEl.textContent = '狀態：等待 Service Worker 就緒（首次載入可能會自動重載一次）…';
-        // ✅ 等 SW ready，確保 COI 生效
         await navigator.serviceWorker.ready;
 
         log(`crossOriginIsolated=${self.crossOriginIsolated}`);
@@ -57,25 +67,23 @@
 
         statusEl.textContent = '狀態：正在載入 FFmpeg Core（首次載入會稍慢）…';
 
-        // ✅ 使用同源自托管檔案（與 index.html 同站域）
-        const coreURL   = './core/ffmpeg-core.js';
-        const wasmURL   = './core/ffmpeg-core.wasm';
-        const workerURL = './ffmpeg/worker.js';
-        await ffmpeg.load({ coreURL, wasmURL, workerURL });
+        // ✅ 指定本地絕對路徑（Worker 端動態 import 用）
+        await ffmpeg.load({
+          coreURL:   CORE_JS,
+          wasmURL:   CORE_WASM,
+          workerURL: WORKER_JS
+        });
+
         statusEl.textContent = '狀態：FFmpeg Core 已載入完成 ✅';
         btnTranscode.disabled = false;
         btnThumbnail.disabled = false;
 
-        // --- 轉檔成 MP4 ---
         btnTranscode.onclick = async () => {
           outEl.textContent = ""; log('開始轉檔…');
           const file = fileInput.files?.[0];
           if (!file) { alert("請先選一個影片/音訊檔"); return; }
 
-          // 寫入虛擬檔案系統（本地 file → Uint8Array）
           await ffmpeg.writeFile('input', await fileToUint8Array(file));
-
-          // 基本轉 MP4；你可依需求調整參數
           await ffmpeg.exec(['-i', 'input', '-movflags', 'faststart', 'output.mp4']);
 
           const data = await ffmpeg.readFile('output.mp4');
@@ -84,7 +92,6 @@
           log('轉檔完成 ✅');
         };
 
-        // --- 擷取 1 秒處的縮圖 ---
         btnThumbnail.onclick = async () => {
           outEl.textContent = ""; log('擷取縮圖中…');
           const file = fileInput.files?.[0];
@@ -95,7 +102,7 @@
 
           const jpg = await ffmpeg.readFile('thumb.jpg');
           const url = URL.createObjectURL(new Blob([jpg.buffer], { type: 'image/jpeg' }));
-          outEl.innerHTML = `<img src="${url}" alt="縮圖" style="max-width: 320px;" />`;
+          outEl.innerHTML = `<img src="${url}" alt="縮圖" />`;
           log('擷取完成 ✅');
         };
 
