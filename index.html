@@ -5,8 +5,11 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>FFmpeg.wasm on GitHub Pages</title>
-  <!-- 啟用 Cross-Origin Isolation（GH Pages 無法設標頭，因此用 SW 補） -->
-  <script src="coi-serviceworker.min.js"></script>
+
+  <!-- ✅ 正確引入，同源的 coi-serviceworker（不能用 CDN） -->
+  <script src="./coi-serviceworker.min.js"></script>
+
+  <link rel="icon" href="data:,"><!-- 避免 favicon 404 -->
   <style>
     body { font-family: system-ui, -apple-system, "Segoe UI", Roboto; margin: 2rem; }
     .log { white-space: pre-wrap; background:#111; color:#0f0; padding:1rem; min-height:8rem; }
@@ -33,43 +36,36 @@
     const statusEl = document.getElementById('status');
     const outEl = document.getElementById('out');
 
-    // 建立 FFmpeg 實例並監聽 log
     const ffmpeg = new FFmpeg();
-    ffmpeg.on('log', ({ message }) => {
-      logEl.textContent += message + "\n";
-    });
+    ffmpeg.on('log', ({ message }) => { logEl.textContent += message + "\n"; });
 
-    // 載入核心（單執行緒 core；若你要更快可改 core-mt，但對 COI/瀏覽器相容性要求更嚴）
-    const baseURL = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd"; // jsDelivr 建議用，CORP 友善
-    // 將跨網域腳本轉成本地 blob URL，避開 CORS 細節
-    const coreURL = await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript');
-    const wasmURL = await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm');
+    // ✅ 用 blob URL 載入 core / wasm / worker，避免 COEP 阻擋
+    const CORE_BASE = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd";
+    const FF_BASE   = "https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.15/dist/esm";
 
-    statusEl.textContent = "狀態：正在載入 FFmpeg Core（首次會花點時間）...";
-    await ffmpeg.load({ coreURL, wasmURL });  // 載入核心檔
+    const coreURL   = await toBlobURL(`${CORE_BASE}/ffmpeg-core.js`,  'text/javascript');
+    const wasmURL   = await toBlobURL(`${CORE_BASE}/ffmpeg-core.wasm`, 'application/wasm');
+    const workerURL = await toBlobURL(`${FF_BASE}/worker.js`,          'text/javascript');
+
+    statusEl.textContent = "狀態：正在載入 FFmpeg Core...";
+    await ffmpeg.load({ coreURL, wasmURL, workerURL });   // ← 關鍵：把 worker.js 也指定進來
     statusEl.textContent = `狀態：FFmpeg Core 已載入。crossOriginIsolated=${self.crossOriginIsolated}`;
 
     const fileInput = document.getElementById('file');
 
-    // 轉檔成 MP4（示範）
     document.getElementById('btnTranscode').onclick = async () => {
       outEl.textContent = ""; logEl.textContent = "";
       const file = fileInput.files?.[0];
       if (!file) { alert("請先選一個影片/音訊檔"); return; }
 
-      // 寫入虛擬檔案系統
       await ffmpeg.writeFile('input', await fetchFile(file));
-
-      // 執行 FFmpeg 指令（基本轉 MP4；實際可換任何你要的參數）
       await ffmpeg.exec(['-i', 'input', '-movflags', 'faststart', 'output.mp4']);
 
-      // 讀回結果並提供下載
       const data = await ffmpeg.readFile('output.mp4');
       const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
-      outEl.innerHTML = `<a href="${url}" download="output.mp4">下載 output.mp4</a>`;
+      outEl.innerHTML = `${url}下載 output.mp4</a>`;
     };
 
-    // 擷取縮圖（第 1 秒）
     document.getElementById('btnThumbnail').onclick = async () => {
       outEl.textContent = ""; logEl.textContent = "";
       const file = fileInput.files?.[0];
@@ -80,7 +76,7 @@
 
       const jpg = await ffmpeg.readFile('thumb.jpg');
       const url = URL.createObjectURL(new Blob([jpg.buffer], { type: 'image/jpeg' }));
-      outEl.innerHTML = `<img src="${url}" alt="縮圖" style="max-width:480px;border:1px solid #ccc" />`;
+      outEl.innerHTML = `${url}`;
     };
   </script>
 </body>
