@@ -1,16 +1,16 @@
+
 <!doctype html>
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>純前端 FFmpeg（ffmpeg.wasm）</title>
+  <title>純前端 FFmpeg（ffmpeg.wasm，本地檔）</title>
 
-  <!-- ✅ 同源引入 coi-serviceworker（不能用 CDN），放在 head 最前面 -->
-  <script src="./coi-serviceworker.min.js"></script
+  <!-- ✅ 正確（同源）引入 coi-serviceworker；務必放在 head 很前面 -->
+  ./coi-serviceworker.min.js</script>
 
   <!-- ✅ 避免 favicon 404 -->
-  data:,<link rel="icon" href="data:,">
-
+  <link rel="icon" href="data:," />
   <style>
     body { font-family: system-ui, -apple-system, "Segoe UI", Roboto; margin: 2rem; }
     h1 { margin-top: 0; }
@@ -21,7 +21,7 @@
   </style>
 </head>
 <body>
-  <h1>純前端 FFmpeg（ffmpeg.wasm）</h1>
+  <h1>純前端 FFmpeg（ffmpeg.wasm，本地檔）</h1>
 
   <div class="controls">
     <input id="file" type="file" accept="video/*,audio/*" />
@@ -34,8 +34,11 @@
   <p id="out"></p>
 
   <script type="module">
-    import { FFmpeg } from "https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.15/dist/esm/index.js";
-    import { fetchFile, toBlobURL } from "https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.2/dist/esm/index.js";
+    // ✅ 以「本地檔」載入 ffmpeg 的 ESM 入口檔，避免 CDN 相對路徑把 worker.js 指到跨來源
+    import { FFmpeg } from "./ffmpeg/index.js";
+
+    // fetchFile 可用 CDN，不牽涉 Worker 載入與 COEP；也可改成本地 util
+    import { fetchFile } from "https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.2/dist/esm/index.js";
 
     const statusEl = document.getElementById('status');
     const logEl = document.getElementById('log');
@@ -43,7 +46,6 @@
     const fileInput = document.getElementById('file');
     const btnTranscode = document.getElementById('btnTranscode');
     const btnThumbnail = document.getElementById('btnThumbnail');
-
     const log = (msg) => { logEl.textContent += `\n${msg}`; };
 
     const start = async () => {
@@ -52,30 +54,19 @@
         // ✅ 等 SW ready，確保 COI 生效
         await navigator.serviceWorker.ready;
 
-        // 顯示 COI 狀態（理想為 true）
         log(`crossOriginIsolated=${self.crossOriginIsolated}`);
 
         const ffmpeg = new FFmpeg();
         ffmpeg.on('log', ({ message }) => log(message));
 
-        // ✅ 用 jsDelivr 作為來源，再轉 blob（同源）
-        const CORE_BASE = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd";
-        const FF_BASE   = "https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.15/dist/esm";
+        statusEl.textContent = '狀態：正在載入 FFmpeg Core（首次載入會稍慢）…';
 
-        statusEl.textContent = '狀態：正在準備 FFmpeg Core（首次載入會稍慢）…';
+        // ✅ 使用同源自托管檔案（與 index.html 同站域）
+        const coreURL   = './ffmpeg-core.js';
+        const wasmURL   = './ffmpeg-core.wasm';
+        const workerURL = './worker.js';
 
-        // ✨ 這三個都要用 blob URL；避免回退到預設 CDN 路徑
-        const coreURL   = await toBlobURL(`${CORE_BASE}/ffmpeg-core.js`,  'text/javascript');
-        const wasmURL   = await toBlobURL(`${CORE_BASE}/ffmpeg-core.wasm`, 'application/wasm');
-        const workerURL = await toBlobURL(`${FF_BASE}/worker.js`,          'text/javascript');
-
-        // await ffmpeg.load({ coreURL, wasmURL, workerURL });
-        await ffmpeg.load({
-          coreURL: './ffmpeg-core.js',
-          wasmURL: './ffmpeg-core.wasm',
-          workerURL: './worker.js'
-        });
-
+        await ffmpeg.load({ coreURL, wasmURL, workerURL });
         statusEl.textContent = '狀態：FFmpeg Core 已載入完成 ✅';
         btnTranscode.disabled = false;
         btnThumbnail.disabled = false;
@@ -111,7 +102,7 @@
         console.error(err);
         statusEl.textContent = `狀態：載入失敗 ❌ ${err?.message || err}`;
         log(`Error: ${err?.stack || err}`);
-        alert('FFmpeg 初始化失敗。請嘗試硬重新載入（Windows/Linux：Ctrl+F5；macOS：Cmd+Shift+R）或改用同源自托管 core/wasm/worker。');
+        alert('FFmpeg 初始化失敗。請嘗試硬重新載入（Windows/Linux：Ctrl+F5；macOS：Cmd+Shift+R）。');
       }
     };
 
@@ -119,5 +110,3 @@
   </script>
 </body>
 </html>
-``
-
