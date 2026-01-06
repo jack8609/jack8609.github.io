@@ -50,10 +50,16 @@
     const log = (msg) => { logEl.textContent += `\n${msg}`; };
 
     // ✅ 用絕對 URL，避免 Worker 端的相對路徑解析錯誤
-    const ORIGIN = location.origin;
-    const CORE_JS   = `${ORIGIN}/core/ffmpeg-core.js`;
-    const CORE_WASM = `${ORIGIN}/core/ffmpeg-core.wasm`;
-    const WORKER_JS = `${ORIGIN}/ffmpeg/worker.js`;
+
+    const BASE = new URL('.', import.meta.url);
+
+    const CORE_JS   = new URL('./core/ffmpeg-core.js', BASE).href;
+    const CORE_WASM = new URL('./core/ffmpeg-core.wasm', BASE).href;
+    const WORKER_JS = new URL('./ffmpeg/worker.js', BASE).href;
+
+    // const CORE_JS   = `${ORIGIN}/core/ffmpeg-core.js`;
+    // const CORE_WASM = `${ORIGIN}/core/ffmpeg-core.wasm`;
+    // const WORKER_JS = `${ORIGIN}/ffmpeg/worker.js`;
 
     const start = async () => {
       try {
