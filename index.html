@@ -1,55 +1,122 @@
-
 <!doctype html>
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>FFmpeg.wasm on GitHub Pages</title>
+  <title>純前端 FFmpeg（ffmpeg.wasm）</title>
 
-  <!-- ✅ 正確引入，同源的 coi-serviceworker（不能用 CDN） -->
-  <script src="./coi-serviceworker.min.js"></script>
+  <!-- ✅ 同源引入 coi-serviceworker（不能用 CDN），放在 head 最前面 -->
+  ./coi-serviceworker.min.js</script>
 
-  <link rel="icon" href="data:,"><!-- 避免 favicon 404 -->
+  <!-- ✅ 避免 favicon 404 -->
+  data:,<link rel="icon" href="data:,">
+
   <style>
     body { font-family: system-ui, -apple-system, "Segoe UI", Roboto; margin: 2rem; }
+    h1 { margin-top: 0; }
     .log { white-space: pre-wrap; background:#111; color:#0f0; padding:1rem; min-height:8rem; }
+    .controls { margin: 1rem 0; }
+    button { margin-right: .5rem; }
+    .status { margin:.5rem 0; }
   </style>
 </head>
 <body>
   <h1>純前端 FFmpeg（ffmpeg.wasm）</h1>
 
-  <p>
+  <div class="controls">
     <input id="file" type="file" accept="video/*,audio/*" />
-    <button id="btnTranscode">轉成 MP4</button>
-    <button id="btnThumbnail">擷取縮圖</button>
-  </p>
+    <button id="btnTranscode" disabled>轉成 MP4</button>
+    <button id="btnThumbnail" disabled>擷取縮圖</button>
+  </div>
 
-  <p id="status">狀態：尚未載入 FFmpeg Core...</p>
-  <div class="log" id="log"></div>
+  <p class="status" id="status">狀態：初始化中…</p>
+  <div class="log" id="log">Log：</div>
   <p id="out"></p>
-<script type="module">
-  import { FFmpeg } from "https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.15/dist/esm/index.js";
-  import { fetchFile, toBlobURL } from "https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.2/dist/esm/index.js";
 
-  // ✅ 等 Service Worker 就緒（確保 COI）
-  await navigator.serviceWorker.ready;
+  <script type="module">
+    import { FFmpeg } from "https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.15/dist/esm/index.js";
+    import { fetchFile, toBlobURL } from "https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.2/dist/esm/index.js";
 
-  const ffmpeg = new FFmpeg();
-  ffmpeg.on('log', ({ message }) => console.log(message));
+    const statusEl = document.getElementById('status');
+    const logEl = document.getElementById('log');
+    const outEl = document.getElementById('out');
+    const fileInput = document.getElementById('file');
+    const btnTranscode = document.getElementById('btnTranscode');
+    const btnThumbnail = document.getElementById('btnThumbnail');
 
-  // 建議用 jsDelivr 作為來源，再轉 blob（同源）
-  const CORE_BASE = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd";
-  const FF_BASE   = "https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.15/dist/esm";
+    const log = (msg) => { logEl.textContent += `\n${msg}`; };
 
-  const coreURL   = await toBlobURL(`${CORE_BASE}/ffmpeg-core.js`,  'text/javascript');
-  const wasmURL   = await toBlobURL(`${CORE_BASE}/ffmpeg-core.wasm`, 'application/wasm');
-  const workerURL = await toBlobURL(`${FF_BASE}/worker.js`,          'text/javascript'); // ★ 關鍵
+    const start = async () => {
+      try {
+        statusEl.textContent = '狀態：等待 Service Worker 就緒（首次載入可能會自動重載一次）…';
+        // ✅ 等 SW ready，確保 COI 生效
+        await navigator.serviceWorker.ready;
 
-  await ffmpeg.load({ coreURL, wasmURL, workerURL }); // ★ 三者都要給
+        // 顯示 COI 狀態（理想為 true）
+        log(`crossOriginIsolated=${self.crossOriginIsolated}`);
 
-  console.log('COI:', self.crossOriginIsolated); // 理想是 true
-  // 後續寫檔、exec、讀檔...
-</script>
+        const ffmpeg = new FFmpeg();
+        ffmpeg.on('log', ({ message }) => log(message));
+
+        // ✅ 用 jsDelivr 作為來源，再轉 blob（同源）
+        const CORE_BASE = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd";
+        const FF_BASE   = "https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.15/dist/esm";
+
+        statusEl.textContent = '狀態：正在準備 FFmpeg Core（首次載入會稍慢）…';
+
+        // ✨ 這三個都要用 blob URL；避免回退到預設 CDN 路徑
+        const coreURL   = await toBlobURL(`${CORE_BASE}/ffmpeg-core.js`,  'text/javascript');
+        const wasmURL   = await toBlobURL(`${CORE_BASE}/ffmpeg-core.wasm`, 'application/wasm');
+        const workerURL = await toBlobURL(`${FF_BASE}/worker.js`,          'text/javascript');
+
+        // await ffmpeg.load({ coreURL, wasmURL, workerURL });
+        await ffmpeg.load({
+          coreURL: './ffmpeg-core.js',
+          wasmURL: './ffmpeg-core.wasm',
+          workerURL: './worker.js'
+        });
+
+        statusEl.textContent = '狀態：FFmpeg Core 已載入完成 ✅';
+        btnTranscode.disabled = false;
+        btnThumbnail.disabled = false;
+
+        // --- 按鈕事件 ---
+        btnTranscode.onclick = async () => {
+          outEl.textContent = ""; log('開始轉檔…');
+          const file = fileInput.files?.[0];
+          if (!file) { alert("請先選一個影片/音訊檔"); return; }
+
+          await ffmpeg.writeFile('input', await fetchFile(file));
+          await ffmpeg.exec(['-i', 'input', '-movflags', 'faststart', 'output.mp4']);
+          const data = await ffmpeg.readFile('output.mp4');
+          const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
+          outEl.innerHTML = `${url}下載 output.mp4</a>`;
+          log('轉檔完成 ✅');
+        };
+
+        btnThumbnail.onclick = async () => {
+          outEl.textContent = ""; log('擷取縮圖中…');
+          const file = fileInput.files?.[0];
+          if (!file) { alert("請先選一個影片檔"); return; }
+
+          await ffmpeg.writeFile('in.mp4', await fetchFile(file));
+          await ffmpeg.exec(['-ss', '00:00:01', '-i', 'in.mp4', '-frames:v', '1', 'thumb.jpg']);
+          const jpg = await ffmpeg.readFile('thumb.jpg');
+          const url = URL.createObjectURL(new Blob([jpg.buffer], { type: 'image/jpeg' }));
+          outEl.innerHTML = `${url}`;
+          log('擷取完成 ✅');
+        };
+
+      } catch (err) {
+        console.error(err);
+        statusEl.textContent = `狀態：載入失敗 ❌ ${err?.message || err}`;
+        log(`Error: ${err?.stack || err}`);
+        alert('FFmpeg 初始化失敗。請嘗試硬重新載入（Windows/Linux：Ctrl+F5；macOS：Cmd+Shift+R）或改用同源自托管 core/wasm/worker。');
+      }
+    };
+
+    start();
+  </script>
 </body>
 </html>
-
+``
