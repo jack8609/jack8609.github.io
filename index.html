@@ -4,26 +4,28 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>純前端 FFmpeg（本地檔，進階除錯版）</title>
+  <title>FFmpeg 本地檔｜整合診斷版</title>
 
-  <!-- 同源 COI SW：放在 head 最前面 -->
+  <!-- ✅ 同源 COI Service Worker（需在 HTTP 伺服器，不可用 file://） -->
   <script src="./coi-serviceworker.min.js"></script>
+
+  <!-- 避免 favicon 404 -->
   <link rel="icon" href="data:," />
 
   <style>
     body { font-family: system-ui, -apple-system, "Segoe UI", Roboto; margin: 2rem; }
     h1 { margin-top: 0; }
-    .log { white-space: pre-wrap; background:#111; color:#0f0; padding:1rem; min-height:12rem; }
+    .log { white-space: pre-wrap; background:#111; color:#0f0; padding:1rem; min-height:14rem; }
     .controls { margin: 1rem 0; }
     button { margin-right: .5rem; }
     .status { margin:.5rem 0; }
-    .small { font-size: 0.9rem; color: #555; }
-    .error { color: #f66; }
-    .ok { color: #6f6; }
+    .error { color:#f66; }
+    .ok { color:#6f6; }
+    a { color: #06c; }
   </style>
 </head>
 <body>
-  <h1>純前端 FFmpeg（ffmpeg.wasm，本地檔｜整合除錯）</h1>
+  <h1>純前端 FFmpeg（ffmpeg.wasm，本地檔｜整合診斷）</h1>
 
   <div class="controls">
     <input id="file" type="file" accept="video/*,audio/*" />
@@ -36,43 +38,42 @@
   <p id="out"></p>
 
   <script type="module">
-    /***** 一些工具 *****/
+    /********** 工具與 UI **********/
     const statusEl = document.getElementById('status');
-    const logEl = document.getElementById('log');
-    const outEl = document.getElementById('out');
+    const logEl    = document.getElementById('log');
+    const outEl    = document.getElementById('out');
     const fileInput = document.getElementById('file');
     const btnTranscode = document.getElementById('btnTranscode');
     const btnThumbnail = document.getElementById('btnThumbnail');
 
     const log = (...msgs) => {
       const ts = new Date().toISOString();
-      logEl.textContent += `\n[${ts}] ${msgs.map(m => {
-        try { return typeof m === 'string' ? m : JSON.stringify(m); }
-        catch { return String(m); }
-      }).join(' ')}`;
+      const s = msgs.map(m => {
+        if (typeof m === 'string') return m;
+        try { return JSON.stringify(m); } catch { return String(m); }
+      }).join(' ');
+      logEl.textContent += `\n[${ts}] ${s}`;
       logEl.scrollTop = logEl.scrollHeight;
       console.log(...msgs);
     };
-
-    const errlog = (...msgs) => {
-      log(...msgs.map(m => `ERROR: ${m}`));
-      console.error(...msgs);
-    };
-
+    const errlog = (...msgs) => { log('ERROR:', ...msgs); console.error(...msgs); };
     const fileToUint8Array = async (file) => new Uint8Array(await file.arrayBuffer());
 
-    /***** 路徑：以 import.meta.url 產生含子目錄的絕對 URL  *****/
+    /********** 以 import.meta.url 計算絕對 URL（含子路徑） **********/
     const BASE = new URL('.', import.meta.url);
 
-    // 👉 若你的核心檔實際在 /ffmpeg/，改成 './ffmpeg/ffmpeg-core.js/.wasm'
+    // 👉 若你的核心檔實際在 /ffmpeg/，改成下列兩行：
+    // const CORE_JS   = new URL('./ffmpeg/ffmpeg-core.js', BASE).href;
+    // const CORE_WASM = new URL('./ffmpeg/ffmpeg-core.wasm', BASE).href;
+
     const CORE_JS   = new URL('./core/ffmpeg-core.js', BASE).href;
     const CORE_WASM = new URL('./core/ffmpeg-core.wasm', BASE).href;
     const WORKER_JS = new URL('./ffmpeg/worker.js', BASE).href;
 
-    /***** HEAD 檢查（狀態碼 & MIME） *****/
+    /********** HEAD 檢查 **********/
     const headCheck = async (url) => {
       try {
-        const res = await fetch(url, { method: 'HEAD' });
+        const res = await fetch(url, { method: 'HEAD', cache: 'no-store' });
         log(`HEAD ${url} -> status=${res.status} content-type=${res.headers.get('content-type')}`);
         return { ok: res.ok, status: res.status, ct: res.headers.get('content-type') };
       } catch (e) {
@@ -81,15 +82,50 @@
       }
     };
 
-    /***** 全域錯誤監聽（主線程） *****/
-    window.addEventListener('error', (e) => {
-      errlog('Main thread error:', e.message, e.filename, e.lineno, e.colno);
-    });
-    window.addEventListener('unhandledrejection', (e) => {
-      errlog('Main thread unhandledrejection:', e.reason?.message || e.reason);
-    });
+    /********** 主線程錯誤監聽 **********/
+    window.addEventListener('error', (e) => errlog('Main error:', e.message, e.filename, e.lineno, e.colno));
+    window.addEventListener('unhandledrejection', (e) => errlog('Main unhandledrejection:', e.reason?.message || e.reason));
 
-    /***** 啟動流程 *****/
+    /********** 診斷用：建立「classic worker」測試 importScripts(core) **********/
+    const diagWorkerURL = URL.createObjectURL(new Blob([`
+      self.addEventListener('message', async (e) => {
+        const { coreURL, wasmURL } = e.data;
+        try {
+          // 基本環境
+          self.postMessage({ step: 'env', userAgent: self.navigator?.userAgent || '(no UA)' });
+          self.postMessage({ step: 'try-importScripts', url: coreURL });
+
+          // ✅ classic worker 裡用 importScripts 載入核心
+          importScripts(coreURL);
+          self.postMessage({ step: 'importScripts-ok' });
+        } catch (err) {
+          self.postMessage({ step: 'importScripts-error', message: err?.message || String(err), stack: err?.stack || '(no stack)' });
+        }
+        try {
+          const res = await fetch(wasmURL, { method: 'GET' });
+          self.postMessage({ step: 'fetch-wasm', status: res.status, ct: res.headers.get('content-type') });
+        } catch (err) {
+          self.postMessage({ step: 'fetch-wasm-error', message: err?.message || String(err) });
+        }
+      });
+    `], { type: 'application/javascript' }));
+
+    const runDiagWorker = async () => {
+      return new Promise((resolve) => {
+        const w = new Worker(diagWorkerURL); // ✅ classic worker（預設）
+        w.onmessage = (ev) => {
+          log('[diagWorker]', ev.data);
+          if (ev.data.step === 'importScripts-ok' || ev.data.step === 'importScripts-error' || ev.data.step === 'onerror') {
+            resolve(ev.data);
+            w.terminate();
+          }
+        };
+        w.onerror = (e) => { errlog('[diagWorker onerror]', e.message); resolve({ step: 'onerror', message: e.message }); w.terminate(); };
+        w.postMessage({ coreURL: CORE_JS, wasmURL: CORE_WASM });
+      });
+    };
+
+    /********** 主流程 **********/
     const start = async () => {
       try {
         statusEl.textContent = '狀態：等待 Service Worker 就緒（首次載入可能會自動重載一次）…';
@@ -99,7 +135,6 @@
         log('BASE =', BASE.href);
         log('crossOriginIsolated =', String(self.crossOriginIsolated));
 
-        // 等待 SW
         await navigator.serviceWorker.ready;
         log('Service Worker ready = true');
 
@@ -107,23 +142,13 @@
         const h1 = await headCheck(CORE_JS);
         const h2 = await headCheck(CORE_WASM);
         const h3 = await headCheck(WORKER_JS);
-
         if (!h1.ok || !h2.ok || !h3.ok) {
           statusEl.textContent = '狀態：資源檢查失敗 ❌';
           errlog('Resource check failed:', { h1, h2, h3 });
-          errlog('請確認路徑與目錄：core/ffmpeg-core.{js,wasm}、ffmpeg/worker.js 是否存在；且非 text/html。');
           return;
         }
 
-        // 提示 MIME
-        if (!/javascript|text\/javascript/.test(h1.ct || '')) {
-          errlog('ffmpeg-core.js Content-Type 不符合（期望 application/javascript 或 text/javascript）：', h1.ct);
-        }
-        if (!/application\/wasm/.test(h2.ct || '')) {
-          errlog('ffmpeg-core.wasm Content-Type 不符合（期望 application/wasm）：', h2.ct);
-        }
-
-        // 再檢查 core.js 是否可抓到內容
+        // 額外抓 core.js 內容長度
         try {
           const src = await (await fetch(CORE_JS, { cache: 'no-store' })).text();
           log('Fetched ffmpeg-core.js length =', src.length);
@@ -131,9 +156,22 @@
           errlog('fetch ffmpeg-core.js failed:', e?.message || e);
         }
 
-        statusEl.textContent = '狀態：正在載入 FFmpeg Core（首次載入會稍慢）…';
+        // ====== ⭐ 先跑診斷 Worker：確認 classic worker 能否 importScripts(coreURL) ======
+        statusEl.textContent = '狀態：診斷 Worker 測試中…';
+        const diag = await runDiagWorker();
+        log('診斷結果 =', diag);
 
-        // 匯入 FFmpeg ESM 入口（你本地的 index.js）
+        if (diag.step === 'importScripts-error' || diag.step === 'onerror') {
+          statusEl.textContent = '狀態：診斷 Worker 無法 importScripts 核心 ❌';
+          errlog('Diagnostic shows importScripts(core) failed in classic worker:', diag);
+          errlog('→ 可能是 CSP/COEP 限制；或 core.js 在 Worker 環境執行時拋錯（SyntaxError/ReferenceError）。');
+          return; // 先停止，避免多重錯誤
+        } else {
+          log('診斷 Worker 顯示 importScripts(core) OK ✅ → 代表環境/MIME 沒問題，接下來測試正式 FFmpeg。');
+        }
+
+        // ====== 正式載入 FFmpeg ESM 入口 ======
+        statusEl.textContent = '狀態：正在載入 FFmpeg Core（正式）…';
         let FFmpegCtor;
         try {
           const mod = await import('./ffmpeg/index.js');
@@ -145,20 +183,15 @@
         }
 
         const ffmpeg = new FFmpegCtor();
-
-        // FFmpeg 事件
         if (ffmpeg?.on) {
           ffmpeg.on('log', ({ message }) => log('[ffmpeg log]', message));
           ffmpeg.on('progress', (p) => log('[ffmpeg progress]', JSON.stringify(p)));
-        } else {
-          log('FFmpeg instance 沒有 on()（事件）——可能是自訂封裝，忽略。');
         }
 
-        // 嘗試載入核心（傳入絕對 URL）
+        // 這裡使用絕對 URL
         const opts = { coreURL: CORE_JS, wasmURL: CORE_WASM, workerURL: WORKER_JS };
         log('Calling ffmpeg.load with opts =', opts);
 
-        // 量測時間
         const t0 = performance.now();
         try {
           await ffmpeg.load(opts);
@@ -167,7 +200,8 @@
           errlog(`ffmpeg.load() threw after ${dt} ms:`, e?.message || e);
           statusEl.textContent = `狀態：載入失敗 ❌ ${e?.message || e}`;
           log('Stack:', e?.stack || '(no stack)');
-          log('可能原因：路徑錯誤、MIME 不符、Worker 類型不合（需 classic）、欄位名不一致。');
+          // 進一步提示：列印你這個 FFmpeg 入口裡面是否使用了 module worker
+          errlog('提示：請檢查 ffmpeg/index.js 是否 new Worker(workerURL, { type: "module" })；目前核心需 classic + importScripts(coreURL)。');
           return;
         }
 
@@ -177,15 +211,13 @@
         btnTranscode.disabled = false;
         btnThumbnail.disabled = false;
 
-        /******** 按鈕功能 ********/
+        // ====== 按鈕功能 ======
         btnTranscode.onclick = async () => {
           outEl.textContent = ""; log('開始轉檔…');
           const file = fileInput.files?.[0];
           if (!file) { alert("請先選一個影片/音訊檔"); return; }
-
           await ffmpeg.writeFile('input', await fileToUint8Array(file));
           await ffmpeg.exec(['-i', 'input', '-movflags', 'faststart', 'output.mp4']);
-
           const data = await ffmpeg.readFile('output.mp4');
           const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
           outEl.innerHTML = `<a href="${url}" download="output.mp4">下載 output.mp4</a>`;
@@ -196,10 +228,8 @@
           outEl.textContent = ""; log('擷取縮圖中…');
           const file = fileInput.files?.[0];
           if (!file) { alert("請先選一個影片檔"); return; }
-
           await ffmpeg.writeFile('in.mp4', await fileToUint8Array(file));
           await ffmpeg.exec(['-ss', '00:00:01', '-i', 'in.mp4', '-frames:v', '1', 'thumb.jpg']);
-
           const jpg = await ffmpeg.readFile('thumb.jpg');
           const url = URL.createObjectURL(new Blob([jpg.buffer], { type: 'image/jpeg' }));
           outEl.innerHTML = `<img src="${url}" alt="縮圖" />`;
@@ -207,7 +237,6 @@
         };
 
       } catch (err) {
-        console.error(err);
         statusEl.textContent = `狀態：載入失敗 ❌ ${err?.message || err}`;
         errlog('Top-level catch:', err?.stack || err);
         alert('FFmpeg 初始化失敗。請嘗試硬重新載入（Windows/Linux：Ctrl+F5；macOS：Cmd+Shift+R）。');
@@ -216,16 +245,5 @@
 
     start();
   </script>
-
-  <!-- Worker 偵錯建議：在你的 ./ffmpeg/worker.js 裡加上這些（供參考）
-  self.addEventListener('error', (e) => {
-    console.error('Worker top-level error:', e.message, e.filename, e.lineno, e.colno);
-  });
-  self.addEventListener('unhandledrejection', (e) => {
-    console.error('Worker unhandledrejection:', e.reason);
-  });
-  // 載入核心：
-  // try { importScripts(coreURL); } catch (e) { console.error('import ffmpeg-core.js failed:', e); throw e; }
-  -->
 </body>
 </html>
