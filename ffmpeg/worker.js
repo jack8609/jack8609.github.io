@@ -1,14 +1,11 @@
 
 // ffmpeg/worker.js (classic worker)
 let core = null;
+let FS = null;
 
-// 事件派發回主線程
 const emit = (evt, payload) => {
   self.postMessage({ type: 'event', data: { evt, payload } });
 };
-
-// 以簡單的 in-memory FS 模擬
-let FS = null;
 
 self.onmessage = async (ev) => {
   const { type, id, cmd, payload } = ev.data || {};
@@ -22,31 +19,47 @@ self.onmessage = async (ev) => {
     if (cmd === 'init') {
       const { coreURL, wasmURL } = payload;
 
-      // ✅ 在 classic worker 內用 importScripts 載入核心 JS
+      // 1) 載入 core JS（classic 才能用 importScripts）
       try {
         importScripts(coreURL);
+        emit('log', { message: `[worker] importScripts(coreURL) OK` });
       } catch (e) {
-        return reply(null, `importScripts(core) failed: ${e?.message || e}`);
+        return reply(null, `importScripts(coreURL) failed: ${e?.message || e}`);
       }
 
-      // 嘗試各種常見入口名稱（視你拿的 ffmpeg-core.js 版本而定）
-      // 1) UMD：self.createFFmpegCore
-      // 2) Emscripten 風格：self.FFmpegWASM、self.Module 等
+      // 2) 取得核心工廠（不同版本名稱可能不同）
       const factory = self.createFFmpegCore || self.FFmpegWASM || self.Module;
       if (!factory) {
-        return reply(null, 'ffmpeg-core.js 沒有暴露 createFFmpegCore/FFmpegWASM/Module 工廠；請確認核心檔版本。');
+        return reply(null, 'ffmpeg-core.js 沒有暴露 createFFmpegCore/FFmpegWASM/Module；請確認核心檔版本。');
       }
 
-      // 建立核心（參數名稱會因版本而異，這裡示範常見用法）
-      // 注意：有些版本需要 { locateFile: (p)=>wasmURL } 來指定 wasm 位置
-      const opts = {
-        print: (txt) => emit('log', { message: txt }),
-        printErr: (txt) => emit('log', { message: txt }),
-        locateFile: (path) => {
-          // 讓核心載入 wasm 時能找到正確 URL
-          if (path.endsWith('.wasm')) return wasmURL;
-          return path;
+      // 3) 先手動抓 wasm 二進位，並做 magic word 檢查
+      let wasmBuf;
+      try {
+        const res = await fetch(wasmURL, { cache: 'no-store' });
+        const ct  = res.headers.get('content-type') || '(unknown)';
+        const buf = await res.arrayBuffer();
+        const u8  = new Uint8Array(buf);
+        const hex = (b) => b.toString(16).padStart(2, '0');
+
+        if (u8.length < 4 || !(u8[0] === 0x00 && u8[1] === 0x61 && u8[2] === 0x73 && u8[3] === 0x6d)) {
+          // 不是 WASM 二進位 → 回報前 4 bytes 與 MIME，便於除錯
+          const head4 = Array.from(u8.slice(0,4)).map(hex).join(' ');
+          emit('log', { message: `[worker] wasm magic mismatch: head=${head4} ct=${ct} len=${u8.length}` });
+          return reply(null, `wasmBinary invalid (magic mismatch). ct=${ct}, head=${head4}, len=${u8.length}`);
         }
+
+        wasmBuf = buf;
+        emit('log', { message: `[worker] fetched wasm OK (len=${u8.length}, ct=${ct})` });
+      } catch (e) {
+        return reply(null, `fetch(wasmURL) failed: ${e?.message || e}`);
+      }
+
+      // 4) 建立核心，直接提供 wasmBinary，避免路徑/locateFile 差異
+      const opts = {
+        wasmBinary: wasmBuf,
+        print:    (txt) => emit('log', { message: txt }),
+        printErr: (txt) => emit('log', { message: txt }),
       };
 
       try {
@@ -55,9 +68,8 @@ self.onmessage = async (ev) => {
         return reply(null, `createFFmpegCore failed: ${e?.message || e}`);
       }
 
-      FS = core.FS || core.fs || core.FS_create ? core.FS : null;
-      if (!FS && core.FS_create) FS = core; // 某些版本把 FS 方法掛在 core 物件
-
+      // 5) 取 FS 介面
+      FS = core.FS || core.fs || (core.FS_create ? core : null);
       if (!FS) {
         return reply(null, 'FFmpeg Core 未提供 FS 介面（FS/FS_create）；請換用相容的核心檔。');
       }
@@ -67,8 +79,7 @@ self.onmessage = async (ev) => {
     }
 
     if (cmd === 'writeFile') {
-      const { path, data } = payload;
-      // Emscripten FS：需要 Uint8Array
+      const { path, data } = payload; // Uint8Array
       FS.writeFile(path, data);
       return reply(true);
     }
@@ -76,7 +87,6 @@ self.onmessage = async (ev) => {
     if (cmd === 'readFile') {
       const { path } = payload;
       const out = FS.readFile(path);
-      // 以 ArrayBuffer 形式回傳以便主線程轉成 Uint8Array
       return reply(out.buffer, null);
     }
 
@@ -84,10 +94,6 @@ self.onmessage = async (ev) => {
       const { args } = payload;
       emit('log', { message: `exec: ${args.join(' ')}` });
 
-      // 不同版本核心執行 API 名稱不同：
-      // 1) core.callMain(args)
-      // 2) core.run(args)
-      // 3) Module._main(args)
       try {
         if (core.callMain) {
           core.callMain(args);
@@ -109,4 +115,3 @@ self.onmessage = async (ev) => {
     reply(null, err?.message || err);
   }
 };
-``
