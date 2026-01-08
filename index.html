@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>前端預覽＋單軌雙把手剪輯／下載完整轉檔／擷取縮圖｜FFmpeg.wasm 本地檔</title>
+  <title>前端預覽＋上下雙滑桿剪輯／下載完整轉檔／擷取縮圖｜FFmpeg.wasm 本地檔</title>
 
   <!-- ✅ COI Service Worker（需同源 HTTP 伺服器；不可 file://） -->
   <script src="./coi-serviceworker.min.js"></script>
@@ -23,8 +23,6 @@
       --track: #2a2f3a;
       --select: #1e6fd6;
       --rail-pad: 14px; /* 軌道左右內距，JS 也會讀取 */
-      --end-offset-y: 12px; /* 結束把手垂直下移，避免壓住開始把手 */
-      --edge-gap: 28px;     /* 左右留白，讓左右能更容易點到各自的把手 */
     }
     * { box-sizing: border-box; }
     body { background: var(--bg); color: var(--fg); font-family: system-ui, -apple-system, "Segoe UI", Roboto; margin: 2rem; }
@@ -44,50 +42,49 @@
     @media (min-width: 980px) { .col { grid-template-columns: 1.2fr 1fr; } }
     .group-title { margin: .5rem 0 .25rem; font-weight: 600; color: #c9d1d9; }
 
-    /* 單軌雙把手（兩個 range 疊在同一軌） */
-    .dual-slider { position: relative; margin-top: .75rem; }
-    .dual-slider .rail {
-      position: relative; height: 54px;
+    /* 上下雙滑桿布局（避免把手互相壓住） */
+    .stacked-slider { position: relative; margin-top: .75rem; }
+    .stacked-slider .rail {
+      position: relative; height: 96px; /* 上下兩條 + 中間選取色帶的空間 */
       padding: 0 var(--rail-pad);
     }
-    .dual-slider .track {
-      position: absolute; top: 50%; left: var(--rail-pad); right: var(--rail-pad);
-      height: 8px; transform: translateY(-50%);
-      background: var(--track); border-radius: 6px;
+    /* 軌道：上（開始）、下（結束） */
+    .stacked-slider .track {
+      position: absolute; left: var(--rail-pad); right: var(--rail-pad);
+      height: 8px; background: var(--track); border-radius: 6px;
     }
-    .dual-slider .selection {
-      position: absolute; top: 50%; height: 8px; transform: translateY(-50%);
-      background: var(--select); border-radius: 6px; opacity: 0.45;
-      /* left/right 由 JS 動態設定 */
+    .stacked-slider .track.top { top: 16px; }
+    .stacked-slider .track.bottom { top: 62px; }
+
+    /* 選取範圍著色（位於中間） */
+    .stacked-slider .selection {
+      position: absolute; top: 39px; /* 介於兩條軌中間 */
+      height: 8px; background: var(--select); border-radius: 6px; opacity: 0.45;
+      left: var(--rail-pad); right: var(--rail-pad); /* 先填滿，JS 會動態改 left/right/width */
     }
 
-    /* 兩個 range 疊上去：開始把手正常，結束把手垂直下移 + 反向視覺 */
-    .dual-slider input[type="range"] {
+    /* 上下兩個 range 疊在各自的位置 */
+    .stacked-slider input[type="range"] {
       position: absolute; left: 0; right: 0;
       width: 100%; margin: 0;
       background: transparent;
       -webkit-appearance: none; appearance: none;
-      height: 54px; /* 與 .rail 高度一致 */
+      height: 32px; /* 各自的可點擊高度 */
     }
-
-    /* 可點選區域錯開，避免把手互相壓住：
-       - 開始把手：右邊留空 gap
-       - 結束把手：左邊留空 gap
-    */
-    .dual-slider #startRange { top: 0; z-index: 3; right: var(--edge-gap); }
-    .dual-slider #endRange   { top: var(--end-offset-y); z-index: 2; left: var(--edge-gap); transform: scaleX(-1); }
+    .stacked-slider #startRange { top: 0; }
+    .stacked-slider #endRange   { top: 46px; }
 
     /* 透明化自帶軌道（只保留 thumb） */
-    .dual-slider input[type="range"]::-webkit-slider-runnable-track { height: 8px; background: transparent; }
-    .dual-slider input[type="range"]::-moz-range-track { height: 8px; background: transparent; }
+    .stacked-slider input[type="range"]::-webkit-slider-runnable-track { height: 8px; background: transparent; }
+    .stacked-slider input[type="range"]::-moz-range-track { height: 8px; background: transparent; }
 
     /* thumb 樣式 */
-    .dual-slider input[type="range"]::-webkit-slider-thumb {
+    .stacked-slider input[type="range"]::-webkit-slider-thumb {
       -webkit-appearance: none; appearance: none;
       width: 16px; height: 16px; border-radius: 50%;
       background: var(--accent); border: 1px solid #0c3a60; margin-top: -4px;
     }
-    .dual-slider input[type="range"]::-moz-range-thumb {
+    .stacked-slider input[type="range"]::-moz-range-thumb {
       width: 16px; height: 16px; border-radius: 50%;
       background: var(--accent); border: 1px solid #0c3a60;
     }
@@ -96,7 +93,7 @@
     .log-panel { display: none; }
     .log-panel.show { display: block; }
 
-    /* 大型截圖預覽面板（為未來編輯預留空間） */
+    /* 截圖預覽面板（為未來編輯預留空間） */
     .shot-box { display: grid; grid-template-columns: 1fr; gap: .75rem; }
     .shot-preview {
       background: #0a0a0a; border: 1px solid var(--border);
@@ -107,7 +104,7 @@
   </style>
 </head>
 <body>
-  <h1>前端預覽＋單軌雙把手剪輯／下載完整轉檔／擷取縮圖</h1>
+  <h1>前端預覽＋上下雙滑桿剪輯／下載完整轉檔／擷取縮圖</h1>
 
   <!-- 檔案選擇與狀態（含「顯示 Log」核取方塊） -->
   <div class="panel">
@@ -121,10 +118,10 @@
     </div>
   </div>
 
-  <!-- 主面板：預覽 + 單軌雙把手 + 操作按鈕 -->
+  <!-- 主面板：預覽 + 上下雙滑桿 + 操作按鈕 -->
   <div class="panel">
     <div class="col">
-      <!-- 左側：預覽與單軌雙把手 -->
+      <!-- 左側：預覽與上下雙滑桿 -->
       <div>
         <h3>預覽</h3>
         <video id="preview" controls playsinline style="max-width:100%; width:520px; background:#000; border-radius: 8px;"></video>
@@ -133,12 +130,15 @@
           目前：<span id="cur">00:00:00.00</span>　／　片長：<span id="dur">00:00:00.00</span>
         </div>
 
-        <div class="dual-slider">
+        <div class="stacked-slider">
           <div class="rail">
-            <div class="track"></div>
+            <div class="track top"></div>
+            <div class="track bottom"></div>
             <div class="selection" id="selection"></div>
 
+            <!-- 上：開始滑桿 -->
             <input id="startRange" type="range" min="0" max="0" step="0.01" value="0" />
+            <!-- 下：結束滑桿 -->
             <input id="endRange"   type="range" min="0" max="0" step="0.01" value="0" />
           </div>
           <div class="controls" style="margin-top:.5rem;">
@@ -191,7 +191,7 @@
     const curEl      = document.getElementById('cur');
     const durEl      = document.getElementById('dur');
 
-    const rail       = document.querySelector('.dual-slider .rail');
+    const rail       = document.querySelector('.stacked-slider .rail');
     const selectionEl= document.getElementById('selection');
 
     const startRange = document.getElementById('startRange');
@@ -382,7 +382,7 @@
       curEl.textContent = fmt(preview.currentTime);
     });
 
-    /********** 單軌雙把手：聯動 + 連動預覽 + 著色選取範圍 **********/
+    /********** 上下雙滑桿：聯動 + 連動預覽 + 著色選取範圍 **********/
     function cssPxToNum(v) { return Number(String(v||'0').replace('px','')) || 0; }
     function updateSelectionBar() {
       const dur = parseFloat(endRange.max) || 0;
@@ -406,10 +406,11 @@
       selectionEl.style.width = `${innerW - (innerW * startPct) - (innerW * (1 - endPct))}px`;
     }
 
-    const clampRanges = () => {
+    const clampRanges = (dragged) => {
       let s = parseFloat(startRange.value);
       let e = parseFloat(endRange.value);
-      if (e < s) { startRange.value = e; s = e; }
+      if (dragged === 'start' && s > e) { endRange.value = s; e = s; }
+      if (dragged === 'end'   && e < s) { startRange.value = e; s = e; }
       startLabel.textContent = `開始：${fmt(s)}`;
       endLabel.textContent   = `結束：${fmt(e)}`;
       updateSelectionBar();
@@ -417,22 +418,13 @@
     const previewSyncStart = () => {
       const s = parseFloat(startRange.value);
       if (isFinite(s)) preview.currentTime = s;
-      clampRanges();
+      clampRanges('start');
     };
     const previewSyncEnd = () => {
       const e = parseFloat(endRange.value);
       if (isFinite(e)) preview.currentTime = e;
-      clampRanges();
+      clampRanges('end');
     };
-
-    // 提高使用性：按到哪個把手，就把它提到最上層
-    function raise(el) {
-      if (el === startRange) { startRange.style.zIndex = 5; endRange.style.zIndex = 4; }
-      else { endRange.style.zIndex = 5; startRange.style.zIndex = 4; }
-    }
-    startRange.addEventListener('pointerdown', () => raise(startRange));
-    endRange.addEventListener('pointerdown',   () => raise(endRange));
-
     startRange.addEventListener('input', previewSyncStart);
     endRange.addEventListener('input', previewSyncEnd);
     window.addEventListener('resize', updateSelectionBar);
