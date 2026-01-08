@@ -20,6 +20,8 @@
       --err: #ff6b6b;
       --panel: #16181d;
       --border: #262a33;
+      --track: #2a2f3a;
+      --select: #1e6fd6;
     }
     * { box-sizing: border-box; }
     body { background: var(--bg); color: var(--fg); font-family: system-ui, -apple-system, "Segoe UI", Roboto; margin: 2rem; }
@@ -39,36 +41,47 @@
     @media (min-width: 980px) { .col { grid-template-columns: 1.2fr 1fr; } }
     .group-title { margin: .5rem 0 .25rem; font-weight: 600; color: #c9d1d9; }
 
-    /* 單軌雙把手（兩個 range 疊在一起） */
+    /* 單軌雙把手（兩個 range 疊在同一軌） */
     .dual-slider {
       position: relative;
-      height: 44px;
-      display: grid;
-      grid-template-columns: auto 1fr auto;
-      gap: .5rem;
-      align-items: center;
+      margin-top: .75rem;
     }
     .dual-slider .rail {
       position: relative;
-      height: 44px;
+      height: 46px;
     }
+    /* 底層軌道與選取色帶 */
+    .dual-slider .track {
+      position: absolute; top: 50%; left: 0; right: 0;
+      height: 8px; transform: translateY(-50%);
+      background: var(--track); border-radius: 6px;
+    }
+    .dual-slider .selection {
+      position: absolute; top: 50%; height: 8px; transform: translateY(-50%);
+      background: var(--select); border-radius: 6px;
+      opacity: 0.45;
+    }
+
+    /* 兩個 range 疊上去：左把手正常，右把手下移 10px 並反向視覺，避免壓住左把手 */
     .dual-slider input[type="range"] {
-      position: absolute;
-      inset: 0 0 0 0;
-      width: 100%;
-      margin: 0;
-      background: transparent;
-      -webkit-appearance: none;
-      appearance: none;
+      position: absolute; left: 0; right: 0;
+      width: 100%; margin: 0;
+      background: transparent; /* 讓自身軌道透明，只顯示 thumb */
+      -webkit-appearance: none; appearance: none;
+      height: 46px;
     }
-    /* 軌道 */
+    .dual-slider #startRange { top: 0; z-index: 2; }
+    .dual-slider #endRange   { top: 10px; z-index: 3; transform: scaleX(-1); }
+
+    /* 透明化自帶軌道（只保留 thumb） */
     .dual-slider input[type="range"]::-webkit-slider-runnable-track {
-      height: 8px; background: #2a2f3a; border-radius: 6px;
+      height: 8px; background: transparent;
     }
     .dual-slider input[type="range"]::-moz-range-track {
-      height: 8px; background: #2a2f3a; border-radius: 6px;
+      height: 8px; background: transparent;
     }
-    /* 把手 */
+
+    /* thumb 樣式 */
     .dual-slider input[type="range"]::-webkit-slider-thumb {
       -webkit-appearance: none; appearance: none;
       width: 16px; height: 16px; border-radius: 50%;
@@ -78,17 +91,13 @@
       width: 16px; height: 16px; border-radius: 50%;
       background: var(--accent); border: 1px solid #0c3a60;
     }
-    /* 右把手：視覺反向（右→左） */
-    .dual-slider input.inverse { transform: scaleX(-1); }
 
     /* Log 折疊控制 */
     .log-panel { display: none; }
     .log-panel.show { display: block; }
 
     /* 大型截圖預覽面板（為未來編輯預留空間） */
-    .shot-box {
-      display: grid; grid-template-columns: 1fr; gap: .75rem;
-    }
+    .shot-box { display: grid; grid-template-columns: 1fr; gap: .75rem; }
     .shot-preview {
       background: #0a0a0a; border: 1px solid var(--border);
       min-height: 260px; display: flex; align-items: center; justify-content: center;
@@ -126,17 +135,19 @@
           目前：<span id="cur">00:00:00.00</span>　／　片長：<span id="dur">00:00:00.00</span>
         </div>
 
-        <!-- 單軌雙把手（左：開始；右：結束） -->
-        <div style="margin-top:.75rem;">
-          <div class="group-title">剪輯範圍（單軌雙把手）</div>
-          <div class="dual-slider">
+        <!-- 單軌雙把手（左：開始；右：結束）＋ 選取色帶 -->
+        <div class="dual-slider">
+          <div class="rail">
+            <div class="track"></div>
+            <div class="selection" id="selection"></div>
+
+            <!-- 左把手（正常） -->
+            <input id="startRange" type="range" min="0" max="0" step="0.01" value="0" />
+            <!-- 右把手（下移＋反向） -->
+            <input id="endRange" type="range" min="0" max="0" step="0.01" value="0" />
+          </div>
+          <div class="controls" style="margin-top:.5rem;">
             <span class="chip time" id="startLabel">開始：00:00:00.00</span>
-            <div class="rail">
-              <!-- 左把手（正常） -->
-              <input id="startRange" type="range" min="0" max="0" step="0.01" value="0" />
-              <!-- 右把手（反向視覺） -->
-              <input id="endRange" class="inverse" type="range" min="0" max="0" step="0.01" value="0" />
-            </div>
             <span class="chip time" id="endLabel">結束：00:00:00.00</span>
           </div>
           <p class="hint">提示：無轉碼剪輯（<code>-c copy</code>）速度最快，但裁切點以「關鍵幀」為準，可能略有偏差；若需要毫秒級精準，請改用重編碼（會較慢）。</p>
@@ -184,6 +195,9 @@
     const preview    = document.getElementById('preview');
     const curEl      = document.getElementById('cur');
     const durEl      = document.getElementById('dur');
+
+    const rail       = document.querySelector('.dual-slider .rail');
+    const selectionEl= document.getElementById('selection');
 
     const startRange = document.getElementById('startRange');
     const endRange   = document.getElementById('endRange');
@@ -275,7 +289,7 @@
     let playableName    = '';    // 對應 ffmpeg FS 的輸入檔名（通常 'input.mp4'）
     let autoMp4Blob     = null;  // TS 自動轉檔的 MP4 Blob（供下載）
     let autoMp4Url      = '';    // TS 自動轉檔的 MP4 ObjectURL（供預覽）
-    let currentObjectURL = '';   // 預覽用的暫時 URL（避免洩漏記憶體）
+    let currentObjectURL = '';   // 預覽用暫時 URL（避免洩漏記憶體）
 
     function revokeURL(url) { try { if (url) URL.revokeObjectURL(url); } catch {} }
     function setActionsEnabled(enabled) {
@@ -284,10 +298,12 @@
       btnThumbnail.disabled = !enabled;
     }
     function resetClipUI(dur = 0) {
-      startRange.min = 0; startRange.max = dur || 0; startRange.value = 0;
-      endRange.min = 0; endRange.max = dur || 0; endRange.value = dur || 0;
+      startRange.min = 0; endRange.min = 0;
+      startRange.max = dur || 0; endRange.max = dur || 0;
+      startRange.value = 0; endRange.value = dur || 0;
       startLabel.textContent = `開始：${fmt(0)}`;
       endLabel.textContent   = `結束：${fmt(dur || 0)}`;
+      updateSelectionBar();
       outEl.textContent = '';
     }
     function triggerDownloadFromBlob(blob, filename) {
@@ -304,9 +320,10 @@
     /********** 檔案變更（不自動播放；TS 自動重封裝成 MP4 作為預覽） **********/
     fileInput.onchange = async () => {
       const file = fileInput.files?.[0];
-      // 清理舊預覽 URL
+      // 清理舊預覽 URL 與截圖預覽
       revokeURL(currentObjectURL);
       currentObjectURL = '';
+      shotPreviewBox.innerHTML = '<span class="hint">尚未擷取縮圖</span>';
 
       if (!file) {
         selectedFileRaw = null; playableBlob = null; playableName = '';
@@ -316,8 +333,6 @@
         preview.load();
         fileInfo.textContent = '請選擇影片或音訊檔（支援 .mp4 / .ts / .mov / .mp3 等）';
         resetClipUI(0);
-        // 清空截圖預覽
-        shotPreviewBox.innerHTML = '<span class="hint">尚未擷取縮圖</span>';
         return;
       }
 
@@ -362,9 +377,6 @@
           fileInfo.textContent = `已選擇：${file.name}（${(file.size/1024/1024).toFixed(2)} MB）`;
           setActionsEnabled(true);
         }
-
-        // 清空截圖預覽
-        shotPreviewBox.innerHTML = '<span class="hint">尚未擷取縮圖</span>';
       } catch (e) {
         errlog('載入/轉檔失敗：', e?.message || e);
         alert('載入或自動轉檔失敗：' + (e?.message || e));
@@ -383,17 +395,31 @@
       curEl.textContent = fmt(preview.currentTime);
     });
 
-    /********** 單軌雙把手：聯動 + 連動預覽 **********/
+    /********** 單軌雙把手：聯動 + 連動預覽 + 著色選取範圍 **********/
+    function updateSelectionBar() {
+      const dur = parseFloat(endRange.max) || 0;
+      const s = parseFloat(startRange.value);
+      const e = parseFloat(endRange.value);
+      if (!isFinite(dur) || dur <= 0) { selectionEl.style.width = '0'; return; }
+      const railRect = rail.getBoundingClientRect();
+      const padLeft = 0, padRight = 0; // 軌道左右內距（目前無）
+      const startPct = Math.max(0, Math.min(1, s / dur));
+      const endPct   = Math.max(0, Math.min(1, e / dur));
+      const leftPx   = (railRect.width - padLeft - padRight) * startPct;
+      const rightPx  = (railRect.width - padLeft - padRight) * (1 - endPct);
+      const widthPx  = railRect.width - padLeft - padRight - leftPx - rightPx;
+      selectionEl.style.left  = `${leftPx}px`;
+      selectionEl.style.right = `${rightPx}px`;
+      selectionEl.style.width = `${widthPx}px`;
+    }
+
     const clampRanges = () => {
       let s = parseFloat(startRange.value);
       let e = parseFloat(endRange.value);
-      if (e < s) {
-        // 若右把手被拖到左把手左邊 → 讓左把手跟到右把手位置
-        startRange.value = e;
-        s = e;
-      }
+      if (e < s) { startRange.value = e; s = e; }
       startLabel.textContent = `開始：${fmt(s)}`;
       endLabel.textContent   = `結束：${fmt(e)}`;
+      updateSelectionBar();
     };
     const previewSyncStart = () => {
       const s = parseFloat(startRange.value);
@@ -407,6 +433,7 @@
     };
     startRange.addEventListener('input', previewSyncStart);
     endRange.addEventListener('input', previewSyncEnd);
+    window.addEventListener('resize', updateSelectionBar);
 
     /********** 輔助：推斷輸入檔名（容器名）**********/
     function inferInputName(name) {
@@ -467,7 +494,7 @@
             log('TS 已自動轉檔完成，觸發下載 converted.mp4 ✅');
             return;
           }
-          // （理論上已存在；若被釋放則重做一次）
+          // 若被釋放則重做一次
           const inName = 'input.ts';
           const outName = 'automp4.mp4';
           await ffmpeg.writeFile(inName, await fileToUint8Array(selectedFileRaw));
@@ -520,11 +547,8 @@
         img.alt = `縮圖（${ss}s）`;
         shotPreviewBox.appendChild(img);
 
-        // 不自動下載；僅顯示，留待之後圖片編輯功能
         outEl.textContent = `已擷取縮圖（${ss}s）`;
         log('擷取完成 ✅');
-
-        // （可在之後的圖片編輯功能裡再管理 URL 生命週期）
       } catch (e) {
         shotPreviewBox.innerHTML = '<span class="hint">尚未擷取縮圖</span>';
         errlog('擷取縮圖失敗：', e?.message || e);
