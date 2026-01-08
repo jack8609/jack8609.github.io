@@ -22,6 +22,9 @@
       --border: #262a33;
       --track: #2a2f3a;
       --select: #1e6fd6;
+      --rail-pad: 14px; /* 軌道左右內距，JS 也會讀取 */
+      --end-offset-y: 12px; /* 結束把手垂直下移，避免壓住開始把手 */
+      --edge-gap: 28px;     /* 左右留白，讓左右能更容易點到各自的把手 */
     }
     * { box-sizing: border-box; }
     body { background: var(--bg); color: var(--fg); font-family: system-ui, -apple-system, "Segoe UI", Roboto; margin: 2rem; }
@@ -42,44 +45,41 @@
     .group-title { margin: .5rem 0 .25rem; font-weight: 600; color: #c9d1d9; }
 
     /* 單軌雙把手（兩個 range 疊在同一軌） */
-    .dual-slider {
-      position: relative;
-      margin-top: .75rem;
-    }
+    .dual-slider { position: relative; margin-top: .75rem; }
     .dual-slider .rail {
-      position: relative;
-      height: 46px;
+      position: relative; height: 54px;
+      padding: 0 var(--rail-pad);
     }
-    /* 底層軌道與選取色帶 */
     .dual-slider .track {
-      position: absolute; top: 50%; left: 0; right: 0;
+      position: absolute; top: 50%; left: var(--rail-pad); right: var(--rail-pad);
       height: 8px; transform: translateY(-50%);
       background: var(--track); border-radius: 6px;
     }
     .dual-slider .selection {
       position: absolute; top: 50%; height: 8px; transform: translateY(-50%);
-      background: var(--select); border-radius: 6px;
-      opacity: 0.45;
+      background: var(--select); border-radius: 6px; opacity: 0.45;
+      /* left/right 由 JS 動態設定 */
     }
 
-    /* 兩個 range 疊上去：左把手正常，右把手下移 10px 並反向視覺，避免壓住左把手 */
+    /* 兩個 range 疊上去：開始把手正常，結束把手垂直下移 + 反向視覺 */
     .dual-slider input[type="range"] {
       position: absolute; left: 0; right: 0;
       width: 100%; margin: 0;
-      background: transparent; /* 讓自身軌道透明，只顯示 thumb */
+      background: transparent;
       -webkit-appearance: none; appearance: none;
-      height: 46px;
+      height: 54px; /* 與 .rail 高度一致 */
     }
-    .dual-slider #startRange { top: 0; z-index: 2; }
-    .dual-slider #endRange   { top: 10px; z-index: 3; transform: scaleX(-1); }
+
+    /* 可點選區域錯開，避免把手互相壓住：
+       - 開始把手：右邊留空 gap
+       - 結束把手：左邊留空 gap
+    */
+    .dual-slider #startRange { top: 0; z-index: 3; right: var(--edge-gap); }
+    .dual-slider #endRange   { top: var(--end-offset-y); z-index: 2; left: var(--edge-gap); transform: scaleX(-1); }
 
     /* 透明化自帶軌道（只保留 thumb） */
-    .dual-slider input[type="range"]::-webkit-slider-runnable-track {
-      height: 8px; background: transparent;
-    }
-    .dual-slider input[type="range"]::-moz-range-track {
-      height: 8px; background: transparent;
-    }
+    .dual-slider input[type="range"]::-webkit-slider-runnable-track { height: 8px; background: transparent; }
+    .dual-slider input[type="range"]::-moz-range-track { height: 8px; background: transparent; }
 
     /* thumb 樣式 */
     .dual-slider input[type="range"]::-webkit-slider-thumb {
@@ -112,7 +112,6 @@
   <!-- 檔案選擇與狀態（含「顯示 Log」核取方塊） -->
   <div class="panel">
     <div class="controls">
-      <!-- ✅ 支援 .ts -->
       <input id="file" type="file" accept="video/*,audio/*,.ts" />
       <span id="fileInfo" class="hint">請選擇影片或音訊檔（支援 .mp4 / .ts / .mov / .mp3 等）</span>
     </div>
@@ -130,21 +129,17 @@
         <h3>預覽</h3>
         <video id="preview" controls playsinline style="max-width:100%; width:520px; background:#000; border-radius: 8px;"></video>
 
-        <!-- 當前播放時間 / 片長 -->
         <div class="time" style="margin-top:.5rem;">
           目前：<span id="cur">00:00:00.00</span>　／　片長：<span id="dur">00:00:00.00</span>
         </div>
 
-        <!-- 單軌雙把手（左：開始；右：結束）＋ 選取色帶 -->
         <div class="dual-slider">
           <div class="rail">
             <div class="track"></div>
             <div class="selection" id="selection"></div>
 
-            <!-- 左把手（正常） -->
             <input id="startRange" type="range" min="0" max="0" step="0.01" value="0" />
-            <!-- 右把手（下移＋反向） -->
-            <input id="endRange" type="range" min="0" max="0" step="0.01" value="0" />
+            <input id="endRange"   type="range" min="0" max="0" step="0.01" value="0" />
           </div>
           <div class="controls" style="margin-top:.5rem;">
             <span class="chip time" id="startLabel">開始：00:00:00.00</span>
@@ -167,7 +162,7 @@
     </div>
   </div>
 
-  <!-- 大型截圖預覽面板（為未來圖片編輯預留空間） -->
+  <!-- 大型截圖預覽面板 -->
   <div class="panel">
     <h3>截圖預覽（之後可在此編輯）</h3>
     <div class="shot-box">
@@ -211,18 +206,14 @@
 
     const shotPreviewBox  = document.getElementById('shotPreview');
 
-    // Log 顯示控制：預設隱藏；勾選才顯示
+    // Log 顯示控制
     toggleLog.addEventListener('change', () => {
-      if (toggleLog.checked) logPanel.classList.add('show');
-      else logPanel.classList.remove('show');
+      logPanel.classList.toggle('show', toggleLog.checked);
     });
 
     const log = (...msgs) => {
       const ts = new Date().toISOString();
-      const s = msgs.map(m => {
-        if (typeof m === 'string') return m;
-        try { return JSON.stringify(m); } catch { return String(m); }
-      }).join(' ');
+      const s = msgs.map(m => { if (typeof m === 'string') return m; try { return JSON.stringify(m); } catch { return String(m); } }).join(' ');
       logEl.textContent += `\n[${ts}] ${s}`;
       logEl.scrollTop = logEl.scrollHeight;
       console.log(...msgs);
@@ -284,11 +275,11 @@
     await startFFmpeg();
 
     /********** 狀態：原始檔 / 可播放檔（TS 會轉成 MP4） **********/
-    let selectedFileRaw = null;  // 使用者上傳的原始檔（File）
-    let playableBlob    = null;  // 可供預覽與後續操作的 Blob（若為 TS，則為自動轉檔 MP4）
-    let playableName    = '';    // 對應 ffmpeg FS 的輸入檔名（通常 'input.mp4'）
-    let autoMp4Blob     = null;  // TS 自動轉檔的 MP4 Blob（供下載）
-    let autoMp4Url      = '';    // TS 自動轉檔的 MP4 ObjectURL（供預覽）
+    let selectedFileRaw = null;  // 使用者上傳的原始檔
+    let playableBlob    = null;  // 可供預覽與後續操作的 Blob（TS → MP4）
+    let playableName    = '';    // FFmpeg FS 的輸入檔名
+    let autoMp4Blob     = null;  // TS 自動轉檔 MP4 Blob（供下載）
+    let autoMp4Url      = '';    // TS 自動轉檔 MP4 ObjectURL（供預覽）
     let currentObjectURL = '';   // 預覽用暫時 URL（避免洩漏記憶體）
 
     function revokeURL(url) { try { if (url) URL.revokeObjectURL(url); } catch {} }
@@ -320,7 +311,6 @@
     /********** 檔案變更（不自動播放；TS 自動重封裝成 MP4 作為預覽） **********/
     fileInput.onchange = async () => {
       const file = fileInput.files?.[0];
-      // 清理舊預覽 URL 與截圖預覽
       revokeURL(currentObjectURL);
       currentObjectURL = '';
       shotPreviewBox.innerHTML = '<span class="hint">尚未擷取縮圖</span>';
@@ -342,7 +332,6 @@
 
       try {
         if (isTS) {
-          // 🔁 TS → MP4（快速重封裝，不轉碼）
           const inName = 'input.ts';
           const outName = 'automp4.mp4';
 
@@ -354,25 +343,23 @@
           const data = await ffmpeg.readFile(outName);
           autoMp4Blob = new Blob([data.buffer], { type: 'video/mp4' });
           playableBlob = autoMp4Blob;
-          playableName = 'input.mp4'; // 後續操作用 MP4
+          playableName = 'input.mp4';
           autoMp4Url   = URL.createObjectURL(autoMp4Blob);
 
-          // ✅ 不自動播放：只載入預覽來源
           currentObjectURL = autoMp4Url;
           preview.src = currentObjectURL;
-          preview.load();
+          preview.load(); // 不自動播放
 
           fileInfo.textContent = `已選擇：${file.name}（${(file.size/1024/1024).toFixed(2)} MB）｜已自動轉為 MP4 預覽`;
           setActionsEnabled(true);
         } else {
-          // 非 TS：直接以原始檔作為 playable
-          playableBlob = file;               // File 亦可作為 Blob 使用
+          playableBlob = file;
           playableName = inferInputName(file.name);
           autoMp4Blob  = null; autoMp4Url = '';
 
           currentObjectURL = URL.createObjectURL(file);
           preview.src = currentObjectURL;
-          preview.load(); // ✅ 不自動播放
+          preview.load(); // 不自動播放
 
           fileInfo.textContent = `已選擇：${file.name}（${(file.size/1024/1024).toFixed(2)} MB）`;
           setActionsEnabled(true);
@@ -396,21 +383,27 @@
     });
 
     /********** 單軌雙把手：聯動 + 連動預覽 + 著色選取範圍 **********/
+    function cssPxToNum(v) { return Number(String(v||'0').replace('px','')) || 0; }
     function updateSelectionBar() {
       const dur = parseFloat(endRange.max) || 0;
       const s = parseFloat(startRange.value);
       const e = parseFloat(endRange.value);
       if (!isFinite(dur) || dur <= 0) { selectionEl.style.width = '0'; return; }
-      const railRect = rail.getBoundingClientRect();
-      const padLeft = 0, padRight = 0; // 軌道左右內距（目前無）
+
+      const rect = rail.getBoundingClientRect();
+      const styles = getComputedStyle(rail);
+      const padLeft  = cssPxToNum(styles.paddingLeft);
+      const padRight = cssPxToNum(styles.paddingRight);
+
       const startPct = Math.max(0, Math.min(1, s / dur));
       const endPct   = Math.max(0, Math.min(1, e / dur));
-      const leftPx   = (railRect.width - padLeft - padRight) * startPct;
-      const rightPx  = (railRect.width - padLeft - padRight) * (1 - endPct);
-      const widthPx  = railRect.width - padLeft - padRight - leftPx - rightPx;
+      const innerW   = rect.width - padLeft - padRight;
+      const leftPx   = innerW * startPct + padLeft;
+      const rightPx  = innerW * (1 - endPct) + padRight;
+
       selectionEl.style.left  = `${leftPx}px`;
       selectionEl.style.right = `${rightPx}px`;
-      selectionEl.style.width = `${widthPx}px`;
+      selectionEl.style.width = `${innerW - (innerW * startPct) - (innerW * (1 - endPct))}px`;
     }
 
     const clampRanges = () => {
@@ -431,6 +424,15 @@
       if (isFinite(e)) preview.currentTime = e;
       clampRanges();
     };
+
+    // 提高使用性：按到哪個把手，就把它提到最上層
+    function raise(el) {
+      if (el === startRange) { startRange.style.zIndex = 5; endRange.style.zIndex = 4; }
+      else { endRange.style.zIndex = 5; startRange.style.zIndex = 4; }
+    }
+    startRange.addEventListener('pointerdown', () => raise(startRange));
+    endRange.addEventListener('pointerdown',   () => raise(endRange));
+
     startRange.addEventListener('input', previewSyncStart);
     endRange.addEventListener('input', previewSyncEnd);
     window.addEventListener('resize', updateSelectionBar);
@@ -494,7 +496,6 @@
             log('TS 已自動轉檔完成，觸發下載 converted.mp4 ✅');
             return;
           }
-          // 若被釋放則重做一次
           const inName = 'input.ts';
           const outName = 'automp4.mp4';
           await ffmpeg.writeFile(inName, await fileToUint8Array(selectedFileRaw));
@@ -523,7 +524,6 @@
     /********** 功能 3：擷取縮圖（使用目前預覽時間點）→ 大面板顯示 **********/
     btnThumbnail.onclick = async () => {
       try {
-        // 清空舊圖
         shotPreviewBox.innerHTML = '<span class="hint">擷取中…</span>';
 
         if (!playableBlob) { alert("請先選擇影片檔"); shotPreviewBox.innerHTML = '<span class="hint">尚未擷取縮圖</span>'; return; }
