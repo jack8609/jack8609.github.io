@@ -4,47 +4,120 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>FFmpeg 本地檔｜整合診斷版</title>
+  <title>前端預覽＋快速剪輯（無轉碼）｜FFmpeg.wasm 本地檔</title>
 
-  <!-- ✅ 同源 COI Service Worker（需在 HTTP 伺服器，不可用 file://） -->
+  <!-- ✅ COI Service Worker（需同源 HTTP 伺服器；不可 file://） -->
   <script src="./coi-serviceworker.min.js"></script>
 
   <!-- 避免 favicon 404 -->
   <link rel="icon" href="data:," />
 
   <style>
-    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto; margin: 2rem; }
+    :root {
+      --bg: #0e0f12;
+      --fg: #e6e6e6;
+      --accent: #35a0ff;
+      --ok: #39d353;
+      --err: #ff6b6b;
+    }
+    body { background: var(--bg); color: var(--fg); font-family: system-ui, -apple-system, "Segoe UI", Roboto; margin: 2rem; }
     h1 { margin-top: 0; }
-    .log { white-space: pre-wrap; background:#111; color:#0f0; padding:1rem; min-height:14rem; }
-    .controls { margin: 1rem 0; }
-    button { margin-right: .5rem; }
+    .row { display: flex; gap: 1rem; flex-wrap: wrap; }
+    .panel { background: #16181d; border: 1px solid #262a33; border-radius: 10px; padding: 1rem; }
+    .controls { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+    .log { white-space: pre-wrap; background:#0a0a0a; color:#86ff91; padding:1rem; min-height:10rem; border-radius: 8px; font-size: 0.92rem; }
+    button { padding: .5rem .8rem; border-radius: 8px; border: 1px solid #2a2f3a; background: #1d2129; color: var(--fg); cursor: pointer; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    button.primary { border-color: var(--accent); color: #fff; background: #0c3a60; }
     .status { margin:.5rem 0; }
-    .error { color:#f66; }
-    .ok { color:#6f6; }
-    a { color: #06c; }
+    input[type="range"] { width: 480px; }
+    .time { font-variant-numeric: tabular-nums; }
+    .chip { background: #0f2338; color: #bfe3ff; border: 1px solid #1f3d5e; padding: .2rem .5rem; border-radius: 6px; }
+    a { color: #8fbfff; }
+    .hint { color: #9aa5b1; font-size: .9rem; }
   </style>
 </head>
 <body>
-  <h1>純前端 FFmpeg（ffmpeg.wasm，本地檔｜整合診斷）</h1>
+  <h1>前端預覽＋快速剪輯（無轉碼）</h1>
 
-  <div class="controls">
-    <input id="file" type="file" accept="video/*,audio/*" />
-    <button id="btnTranscode" disabled>轉成 MP4</button>
-    <button id="btnThumbnail" disabled>擷取縮圖</button>
+  <!-- 檔案選擇與狀態 -->
+  <div class="panel">
+    <div class="controls">
+      <input id="file" type="file" accept="video/*,audio/*" />
+      <span id="fileInfo" class="hint">請選擇影片或音訊檔（支援 .mp4 / .ts / .mov / .mp3 等）</span>
+    </div>
+    <p class="status" id="status">狀態：初始化中…</p>
   </div>
 
-  <p class="status" id="status">狀態：初始化中…</p>
-  <div class="log" id="log">Log：</div>
-  <p id="out"></p>
+  <!-- 預覽與定位 -->
+  <div class="row">
+    <div class="panel" style="flex: 1 1 520px;">
+      <h3>預覽</h3>
+      <video id="preview" controls playsinline style="max-width:100%; width:520px; background:#000; border-radius: 8px;"></video>
+      <div class="controls" style="margin-top:.75rem;">
+        <input id="seek" type="range" min="0" max="0" step="0.01" value="0" />
+        <span class="time"><span id="cur">00:00:00.00</span> / <span id="dur">00:00:00.00</span></span>
+      </div>
+      <div class="controls">
+        <button id="setStart">設定開始（取目前時間）</button>
+        <button id="setEnd">設定結束（取目前時間）</button>
+        <span class="chip">開始：<span id="startLabel">未設定</span></span>
+        <span class="chip">結束：<span id="endLabel">未設定</span></span>
+      </div>
+      <p class="hint">小提醒：無轉碼剪輯（<code>-c copy</code>）速度最快，但裁切點以「關鍵幀」為準，可能略有偏差；若需要毫秒級精準，請改用重編碼（會較慢）。</p>
+    </div>
+
+    <div class="panel" style="flex: 1 1 320px;">
+      <h3>快速剪輯（不重編碼）</h3>
+      <div class="controls">
+        <button id="btnClip" class="primary" disabled>剪輯並輸出</button>
+        <button id="btnReset">重設開始/結束</button>
+      </div>
+      <p id="out" class="hint"></p>
+    </div>
+  </div>
+
+  <!-- 原本的功能（轉 MP4 / 擷取縮圖） -->
+  <div class="row">
+    <div class="panel" style="flex: 1 1 340px;">
+      <h3>轉檔（MP4）</h3>
+      <div class="controls">
+        <button id="btnTranscode" disabled>轉成 MP4</button>
+      </div>
+    </div>
+    <div class="panel" style="flex: 1 1 340px;">
+      <h3>擷取縮圖</h3>
+      <div class="controls">
+        <button id="btnThumbnail" disabled>擷取縮圖</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 日誌 -->
+  <div class="panel">
+    <h3>Log</h3>
+    <div class="log" id="log">Log：</div>
+  </div>
 
   <script type="module">
-    /********** 工具與 UI **********/
+    /********** UI 工具 **********/
     const statusEl = document.getElementById('status');
     const logEl    = document.getElementById('log');
-    const outEl    = document.getElementById('out');
     const fileInput = document.getElementById('file');
-    const btnTranscode = document.getElementById('btnTranscode');
-    const btnThumbnail = document.getElementById('btnThumbnail');
+    const fileInfo  = document.getElementById('fileInfo');
+    const preview   = document.getElementById('preview');
+    const seek      = document.getElementById('seek');
+    const curEl     = document.getElementById('cur');
+    const durEl     = document.getElementById('dur');
+    const setStartBtn = document.getElementById('setStart');
+    const setEndBtn   = document.getElementById('setEnd');
+    const startLabel  = document.getElementById('startLabel');
+    const endLabel    = document.getElementById('endLabel');
+    const btnClip     = document.getElementById('btnClip');
+    const btnReset    = document.getElementById('btnReset');
+    const btnTranscode= document.getElementById('btnTranscode');
+    const btnThumbnail= document.getElementById('btnThumbnail');
+    const outEl       = document.getElementById('out');
 
     const log = (...msgs) => {
       const ts = new Date().toISOString();
@@ -57,193 +130,199 @@
       console.log(...msgs);
     };
     const errlog = (...msgs) => { log('ERROR:', ...msgs); console.error(...msgs); };
-    const fileToUint8Array = async (file) => new Uint8Array(await file.arrayBuffer());
+    const fmt = (t) => {
+      if (!isFinite(t)) return '00:00:00.00';
+      const h = Math.floor(t / 3600);
+      const m = Math.floor((t % 3600) / 60);
+      const s = t % 60;
+      return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${s.toFixed(2).padStart(5,'0')}`;
+    };
 
-    /********** 以 import.meta.url 計算絕對 URL（含子路徑） **********/
+    /********** FFmpeg 本地載入（classic worker + wasmBinary） **********/
+    // 以 import.meta.url 計算絕對 URL（自動包含子目錄）
     const BASE = new URL('.', import.meta.url);
-
-    // 👉 若你的核心檔實際在 /ffmpeg/，改成下列兩行：
-    // const CORE_JS   = new URL('./ffmpeg/ffmpeg-core.js', BASE).href;
-    // const CORE_WASM = new URL('./ffmpeg/ffmpeg-core.wasm', BASE).href;
-
     const CORE_JS   = new URL('./core/ffmpeg-core.js', BASE).href;
     const CORE_WASM = new URL('./core/ffmpeg-core.wasm', BASE).href;
     const WORKER_JS = new URL('./ffmpeg/worker.js', BASE).href;
 
-    /********** HEAD 檢查 **********/
-    const headCheck = async (url) => {
-      try {
-        const res = await fetch(url, { method: 'HEAD', cache: 'no-store' });
-        log(`HEAD ${url} -> status=${res.status} content-type=${res.headers.get('content-type')}`);
-        return { ok: res.ok, status: res.status, ct: res.headers.get('content-type') };
-      } catch (e) {
-        errlog(`HEAD ${url} failed`, e?.message || e);
-        return { ok: false, status: 0, ct: null, error: e };
-      }
-    };
+    const fileToUint8Array = async (file) => new Uint8Array(await file.arrayBuffer());
 
-    /********** 主線程錯誤監聽 **********/
-    window.addEventListener('error', (e) => errlog('Main error:', e.message, e.filename, e.lineno, e.colno));
-    window.addEventListener('unhandledrejection', (e) => errlog('Main unhandledrejection:', e.reason?.message || e.reason));
+    // 匯入你本地的最小 FFmpeg ESM 入口
+    let FFmpegCtor;
+    let ffmpeg;
+    try {
+      const mod = await import('./ffmpeg/index.js');
+      FFmpegCtor = mod.FFmpeg || mod.default;
+    } catch (e) {
+      statusEl.textContent = '狀態：載入 FFmpeg 入口失敗 ❌';
+      errlog('無法 import ./ffmpeg/index.js：', e?.message || e);
+    }
 
-    /********** 診斷用：建立「classic worker」測試 importScripts(core) **********/
-    const diagWorkerURL = URL.createObjectURL(new Blob([`
-      self.addEventListener('message', async (e) => {
-        const { coreURL, wasmURL } = e.data;
-        try {
-          // 基本環境
-          self.postMessage({ step: 'env', userAgent: self.navigator?.userAgent || '(no UA)' });
-          self.postMessage({ step: 'try-importScripts', url: coreURL });
-
-          // ✅ classic worker 裡用 importScripts 載入核心
-          importScripts(coreURL);
-          self.postMessage({ step: 'importScripts-ok' });
-        } catch (err) {
-          self.postMessage({ step: 'importScripts-error', message: err?.message || String(err), stack: err?.stack || '(no stack)' });
-        }
-        try {
-          const res = await fetch(wasmURL, { method: 'GET' });
-          self.postMessage({ step: 'fetch-wasm', status: res.status, ct: res.headers.get('content-type') });
-        } catch (err) {
-          self.postMessage({ step: 'fetch-wasm-error', message: err?.message || String(err) });
-        }
-      });
-    `], { type: 'application/javascript' }));
-
-    const runDiagWorker = async () => {
-      return new Promise((resolve) => {
-        const w = new Worker(diagWorkerURL); // ✅ classic worker（預設）
-        w.onmessage = (ev) => {
-          log('[diagWorker]', ev.data);
-          if (ev.data.step === 'importScripts-ok' || ev.data.step === 'importScripts-error' || ev.data.step === 'onerror') {
-            resolve(ev.data);
-            w.terminate();
-          }
-        };
-        w.onerror = (e) => { errlog('[diagWorker onerror]', e.message); resolve({ step: 'onerror', message: e.message }); w.terminate(); };
-        w.postMessage({ coreURL: CORE_JS, wasmURL: CORE_WASM });
-      });
-    };
-
-    /********** 主流程 **********/
     const start = async () => {
       try {
-        statusEl.textContent = '狀態：等待 Service Worker 就緒（首次載入可能會自動重載一次）…';
-
-        log('location.href =', location.href);
-        log('document.baseURI =', document.baseURI);
-        log('BASE =', BASE.href);
+        statusEl.textContent = '狀態：等待 Service Worker 就緒…';
+        await navigator.serviceWorker.ready;
         log('crossOriginIsolated =', String(self.crossOriginIsolated));
 
-        await navigator.serviceWorker.ready;
-        log('Service Worker ready = true');
-
-        // 資源檢查
-        const h1 = await headCheck(CORE_JS);
-        const h2 = await headCheck(CORE_WASM);
-        const h3 = await headCheck(WORKER_JS);
-        if (!h1.ok || !h2.ok || !h3.ok) {
-          statusEl.textContent = '狀態：資源檢查失敗 ❌';
-          errlog('Resource check failed:', { h1, h2, h3 });
-          return;
-        }
-
-        // 額外抓 core.js 內容長度
-        try {
-          const src = await (await fetch(CORE_JS, { cache: 'no-store' })).text();
-          log('Fetched ffmpeg-core.js length =', src.length);
-        } catch (e) {
-          errlog('fetch ffmpeg-core.js failed:', e?.message || e);
-        }
-
-        // ====== ⭐ 先跑診斷 Worker：確認 classic worker 能否 importScripts(coreURL) ======
-        statusEl.textContent = '狀態：診斷 Worker 測試中…';
-        const diag = await runDiagWorker();
-        log('診斷結果 =', diag);
-
-        if (diag.step === 'importScripts-error' || diag.step === 'onerror') {
-          statusEl.textContent = '狀態：診斷 Worker 無法 importScripts 核心 ❌';
-          errlog('Diagnostic shows importScripts(core) failed in classic worker:', diag);
-          errlog('→ 可能是 CSP/COEP 限制；或 core.js 在 Worker 環境執行時拋錯（SyntaxError/ReferenceError）。');
-          return; // 先停止，避免多重錯誤
-        } else {
-          log('診斷 Worker 顯示 importScripts(core) OK ✅ → 代表環境/MIME 沒問題，接下來測試正式 FFmpeg。');
-        }
-
-        // ====== 正式載入 FFmpeg ESM 入口 ======
-        statusEl.textContent = '狀態：正在載入 FFmpeg Core（正式）…';
-        let FFmpegCtor;
-        try {
-          const mod = await import('./ffmpeg/index.js');
-          FFmpegCtor = mod.FFmpeg || mod.default;
-          log('Loaded ./ffmpeg/index.js, FFmpegCtor =', !!FFmpegCtor);
-        } catch (e) {
-          statusEl.textContent = '狀態：載入 ESM 入口失敗 ❌';
-          throw new Error(`無法 import ./ffmpeg/index.js：${e?.message || e}`);
-        }
-
-        const ffmpeg = new FFmpegCtor();
+        ffmpeg = new FFmpegCtor();
         if (ffmpeg?.on) {
-          ffmpeg.on('log', ({ message }) => log('[ffmpeg log]', message));
-          ffmpeg.on('progress', (p) => log('[ffmpeg progress]', JSON.stringify(p)));
+          ffmpeg.on('log', ({ message }) => log('[ffmpeg]', message));
+          ffmpeg.on('progress', (p) => log('[progress]', JSON.stringify(p)));
         }
 
-        // 這裡使用絕對 URL
-        const opts = { coreURL: CORE_JS, wasmURL: CORE_WASM, workerURL: WORKER_JS };
-        log('Calling ffmpeg.load with opts =', opts);
-
+        statusEl.textContent = '狀態：正在載入 FFmpeg Core…（首次載入較慢）';
         const t0 = performance.now();
-        try {
-          await ffmpeg.load(opts);
-        } catch (e) {
-          const dt = (performance.now() - t0).toFixed(1);
-          errlog(`ffmpeg.load() threw after ${dt} ms:`, e?.message || e);
-          statusEl.textContent = `狀態：載入失敗 ❌ ${e?.message || e}`;
-          log('Stack:', e?.stack || '(no stack)');
-          // 進一步提示：列印你這個 FFmpeg 入口裡面是否使用了 module worker
-          errlog('提示：請檢查 ffmpeg/index.js 是否 new Worker(workerURL, { type: "module" })；目前核心需 classic + importScripts(coreURL)。');
-          return;
-        }
-
+        await ffmpeg.load({ coreURL: CORE_JS, wasmURL: CORE_WASM, workerURL: WORKER_JS });
         const dt = (performance.now() - t0).toFixed(1);
-        log(`ffmpeg.load() success in ${dt} ms ✅`);
-        statusEl.textContent = '狀態：FFmpeg Core 已載入完成 ✅';
+        statusEl.textContent = `狀態：FFmpeg Core 已載入完成 ✅（${dt} ms）`;
         btnTranscode.disabled = false;
         btnThumbnail.disabled = false;
-
-        // ====== 按鈕功能 ======
-        btnTranscode.onclick = async () => {
-          outEl.textContent = ""; log('開始轉檔…');
-          const file = fileInput.files?.[0];
-          if (!file) { alert("請先選一個影片/音訊檔"); return; }
-          await ffmpeg.writeFile('input', await fileToUint8Array(file));
-          await ffmpeg.exec(['-i', 'input', '-movflags', 'faststart', 'output.mp4']);
-          const data = await ffmpeg.readFile('output.mp4');
-          const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
-          outEl.innerHTML = `<a href="${url}" download="output.mp4">下載 output.mp4</a>`;
-          log('轉檔完成 ✅');
-        };
-
-        btnThumbnail.onclick = async () => {
-          outEl.textContent = ""; log('擷取縮圖中…');
-          const file = fileInput.files?.[0];
-          if (!file) { alert("請先選一個影片檔"); return; }
-          await ffmpeg.writeFile('in.mp4', await fileToUint8Array(file));
-          await ffmpeg.exec(['-ss', '00:00:01', '-i', 'in.mp4', '-frames:v', '1', 'thumb.jpg']);
-          const jpg = await ffmpeg.readFile('thumb.jpg');
-          const url = URL.createObjectURL(new Blob([jpg.buffer], { type: 'image/jpeg' }));
-          outEl.innerHTML = `<img src="${url}" alt="縮圖" />`;
-          log('擷取完成 ✅');
-        };
+        btnClip.disabled = false;
+        log('FFmpeg 已就緒。');
 
       } catch (err) {
         statusEl.textContent = `狀態：載入失敗 ❌ ${err?.message || err}`;
-        errlog('Top-level catch:', err?.stack || err);
-        alert('FFmpeg 初始化失敗。請嘗試硬重新載入（Windows/Linux：Ctrl+F5；macOS：Cmd+Shift+R）。');
+        errlog('初始化失敗：', err?.stack || err);
       }
     };
 
-    start();
+    await start();
+
+    /********** 預覽與進度條 **********/
+    let selectedFile = null;
+    let startTime = NaN; // 使用者選擇開始秒數
+    let endTime   = NaN; // 使用者選擇結束秒數
+
+    const resetMarks = () => {
+      startTime = NaN;
+      endTime = NaN;
+      startLabel.textContent = '未設定';
+      endLabel.textContent = '未設定';
+      outEl.innerHTML = '';
+    };
+
+    fileInput.onchange = () => {
+      const file = fileInput.files?.[0];
+      if (!file) return;
+      selectedFile = file;
+      const url = URL.createObjectURL(file);
+      preview.src = url;
+      preview.play().catch(()=>{});
+      fileInfo.textContent = `已選擇：${file.name}（${(file.size/1024/1024).toFixed(2)} MB）`;
+      resetMarks();
+    };
+
+    preview.addEventListener('loadedmetadata', () => {
+      const dur = preview.duration;
+      seek.max = isFinite(dur) ? dur : 0;
+      durEl.textContent = fmt(dur);
+    });
+
+    preview.addEventListener('timeupdate', () => {
+      const t = preview.currentTime;
+      curEl.textContent = fmt(t);
+      // 滑桿跟隨播放
+      if (Math.abs(seek.value - t) > 0.05) {
+        seek.value = t;
+      }
+    });
+
+    seek.addEventListener('input', () => {
+      // 使用者拖曳滑桿 → 定位影片
+      const v = parseFloat(seek.value);
+      if (isFinite(v)) preview.currentTime = v;
+    });
+
+    setStartBtn.onclick = () => {
+      const t = preview.currentTime;
+      startTime = t;
+      startLabel.textContent = `${fmt(t)}（${t.toFixed(2)}s）`;
+    };
+    setEndBtn.onclick = () => {
+      const t = preview.currentTime;
+      endTime = t;
+      endLabel.textContent = `${fmt(t)}（${t.toFixed(2)}s）`;
+    };
+    btnReset.onclick = resetMarks;
+
+    /********** 快速剪輯：不重編碼（-c copy）**********/
+    btnClip.onclick = async () => {
+      try {
+        outEl.textContent = '';
+        if (!selectedFile) { alert('請先選擇檔案'); return; }
+        if (!isFinite(startTime) || !isFinite(endTime)) { alert('請先設定開始與結束時間'); return; }
+        if (endTime <= startTime) { alert('結束時間必須大於開始時間'); return; }
+
+        const inName = inferInputName(selectedFile.name); // 用副檔名決定輸入檔名
+        const outName = 'clip.mp4';
+
+        log('開始快速剪輯（無轉碼）…', { startTime, endTime, inName, outName });
+        await ffmpeg.writeFile(inName, await fileToUint8Array(selectedFile));
+
+        // 重要：將小數秒數四捨五入到 2 位，避免 argv 太長或格式不一致
+        const ss = startTime.toFixed(2);
+        const to = endTime.toFixed(2);
+        await ffmpeg.exec(['-i', inName, '-ss', ss, '-to', to, '-c', 'copy', outName]);
+
+        const data = await ffmpeg.readFile(outName);
+        const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
+        outEl.innerHTML = `<a href="${url}" download="${outName}">下載剪輯檔案（${ss}s → ${to}s）</a>`;
+        log('剪輯完成 ✅');
+
+      } catch (e) {
+        errlog('快速剪輯失敗：', e?.message || e);
+        alert('剪輯失敗：' + (e?.message || e));
+      }
+    };
+
+    // 依使用者檔名推斷輸入檔名（避免無副檔名導致容器推斷錯誤）
+    function inferInputName(name) {
+      const lower = (name || '').toLowerCase();
+      if (lower.endsWith('.mp4')) return 'input.mp4';
+      if (lower.endsWith('.ts'))  return 'input.ts';
+      if (lower.endsWith('.mov')) return 'input.mov';
+      if (lower.endsWith('.mkv')) return 'input.mkv';
+      if (lower.endsWith('.mp3')) return 'input.mp3';
+      // 預設用 mp4 容器名稱，但 FFmpeg 會根據流內容解析
+      return 'input.mp4';
+    }
+
+    /********** 原本功能：轉檔（MP4）與擷取縮圖 **********/
+    btnTranscode.onclick = async () => {
+      try {
+        outEl.textContent = '';
+        const file = fileInput.files?.[0];
+        if (!file) { alert("請先選一個影片/音訊檔"); return; }
+        const inName = inferInputName(file.name);
+        await ffmpeg.writeFile(inName, await fileToUint8Array(file));
+        await ffmpeg.exec(['-i', inName, '-movflags', 'faststart', 'output.mp4']);
+        const data = await ffmpeg.readFile('output.mp4');
+        const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
+        outEl.innerHTML = `<a href="${url}" download="output.mp4">下載 output.mp4</a>`;
+        log('轉檔完成 ✅');
+      } catch (e) {
+        errlog('轉檔失敗：', e?.message || e);
+        alert('轉檔失敗：' + (e?.message || e));
+      }
+    };
+
+    btnThumbnail.onclick = async () => {
+      try {
+        outEl.textContent = '';
+        const file = fileInput.files?.[0];
+        if (!file) { alert("請先選一個影片檔"); return; }
+        const inName = inferInputName(file.name);
+        await ffmpeg.writeFile(inName, await fileToUint8Array(file));
+        await ffmpeg.exec(['-ss', '00:00:01', '-i', inName, '-frames:v', '1', 'thumb.jpg']);
+        const jpg = await ffmpeg.readFile('thumb.jpg');
+        const url = URL.createObjectURL(new Blob([jpg.buffer], { type: 'image/jpeg' }));
+        outEl.innerHTML = `<img src="${url}" alt="縮圖" style="max-width:240px;border-radius:8px;" />`;
+        log('擷取完成 ✅');
+      } catch (e) {
+        errlog('擷取縮圖失敗：', e?.message || e);
+        alert('擷取縮圖失敗：' + (e?.message || e));
+      }
+    };
   </script>
 </body>
 </html>
