@@ -1,4 +1,3 @@
-
 <!doctype html>
 <html lang="zh-Hant">
 <head>
@@ -36,14 +35,12 @@
     a { color: #8fbfff; }
     .hint { color: #9aa5b1; font-size: .9rem; }
     .col { display: grid; grid-template-columns: 1fr; gap: 1rem; }
-    @media (min-width: 980px) {
-      .col { grid-template-columns: 1.2fr 1fr; }
-    }
+    @media (min-width: 980px) { .col { grid-template-columns: 1.2fr 1fr; } }
     .group-title { margin: .5rem 0 .25rem; font-weight: 600; color: #c9d1d9; }
     /* Log 折疊控制 */
     .log-panel { display: none; }
     .log-panel.show { display: block; }
-    .toggle-row { display: flex; align-items: center; gap: .5rem; margin-top: .5rem; }
+    .toggle-row { display: flex; align-items: center; gap: .5rem; margin-top: .75rem; }
     .toggle-row label { user-select: none; }
   </style>
 </head>
@@ -53,7 +50,8 @@
   <!-- 檔案選擇與狀態 -->
   <div class="panel">
     <div class="controls">
-      <input id="file" type="file" accept="video/*,audio/*" />
+      <!-- ✅ 明確支援 .ts，避免只能選「所有檔案」 -->
+      <input id="file" type="file" accept="video/*,audio/*,.ts" />
       <span id="fileInfo" class="hint">請選擇影片或音訊檔（支援 .mp4 / .ts / .mov / .mp3 等）</span>
     </div>
     <p class="status" id="status">狀態：初始化中…</p>
@@ -141,11 +139,8 @@
 
     // Log 顯示控制：預設隱藏；勾選才顯示
     toggleLog.addEventListener('change', () => {
-      if (toggleLog.checked) {
-        logPanel.classList.add('show');
-      } else {
-        logPanel.classList.remove('show');
-      }
+      if (toggleLog.checked) logPanel.classList.add('show');
+      else logPanel.classList.remove('show');
     });
 
     const log = (...msgs) => {
@@ -156,7 +151,6 @@
       }).join(' ');
       logEl.textContent += `\n[${ts}] ${s}`;
       logEl.scrollTop = logEl.scrollHeight;
-      // 仍保留 console 輸出（即使 UI 隱藏，開發者可用 DevTools 觀察）
       console.log(...msgs);
     };
     const errlog = (...msgs) => { log('ERROR:', ...msgs); console.error(...msgs); };
@@ -206,9 +200,7 @@
         statusEl.textContent = `狀態：FFmpeg Core 已載入完成 ✅（${dt} ms）`;
         log('FFmpeg 已就緒。');
 
-        // 功能按鈕先依「是否已選擇檔案」決定是否可用
         setActionsEnabled(false);
-
       } catch (err) {
         statusEl.textContent = `狀態：載入失敗 ❌ ${err?.message || err}`;
         errlog('初始化失敗：', err?.stack || err);
@@ -217,10 +209,11 @@
 
     await startFFmpeg();
 
-    /********** 預覽與進度條 **********/
-    let selectedFile = null;
-    let startTime = NaN;
-    let endTime   = NaN;
+    /********** 狀態：原始檔 / 可播放檔（TS 會轉成 MP4） **********/
+    let selectedFileRaw = null;  // 使用者上傳的原始檔（File）
+    let playableBlob    = null;  // 可供預覽與後續操作的 Blob（若為 TS，則為自動轉檔後 MP4）
+    let playableName    = '';    // 對應 ffmpeg FS 的輸入檔名（通常 'input.mp4'）
+    let autoMp4Url      = '';    // 若 TS 自動轉檔，這是供下載的 MP4 連結（ObjectURL）
 
     const resetMarks = () => {
       startTime = NaN;
@@ -229,41 +222,93 @@
       endLabel.textContent = '未設定';
       outEl.innerHTML = '';
     };
-
     function setActionsEnabled(enabled) {
       btnClip.disabled = !enabled;
       btnTranscode.disabled = !enabled;
       btnThumbnail.disabled = !enabled;
     }
 
-    fileInput.onchange = () => {
+    /********** 檔案變更（不自動播放；TS 自動重封裝成 MP4 作為預覽） **********/
+    fileInput.onchange = async () => {
       const file = fileInput.files?.[0];
       if (!file) {
-        selectedFile = null;
+        selectedFileRaw = null;
+        playableBlob = null;
+        playableName = '';
         setActionsEnabled(false);
+        preview.removeAttribute('src');
+        preview.load();
+        fileInfo.textContent = '請選擇影片或音訊檔（支援 .mp4 / .ts / .mov / .mp3 等）';
         return;
       }
-      selectedFile = file;
-      const url = URL.createObjectURL(file);
-      preview.src = url;
-      preview.play().catch(()=>{});
-      fileInfo.textContent = `已選擇：${file.name}（${(file.size/1024/1024).toFixed(2)} MB）`;
+
+      selectedFileRaw = file;
       resetMarks();
-      setActionsEnabled(true);
+
+      const lower = (file.name || '').toLowerCase();
+      const isTS = lower.endsWith('.ts');
+
+      try {
+        if (isTS) {
+          // 🔁 先將 TS 快速重封裝成 MP4（不轉碼），並用此 MP4 作預覽與後續操作
+          const inName = 'input.ts';
+          const outName = 'automp4.mp4';
+
+          await ffmpeg.writeFile(inName, await fileToUint8Array(file));
+          const args = ['-i', inName, '-c', 'copy', '-bsf:a', 'aac_adtstoasc', outName];
+          log('TS 自動重封裝為 MP4…', args);
+          await ffmpeg.exec(args);
+
+          const data = await ffmpeg.readFile(outName);
+          playableBlob = new Blob([data.buffer], { type: 'video/mp4' });
+          playableName = 'input.mp4'; // 後續操作一律使用 MP4 作為輸入
+          autoMp4Url   = URL.createObjectURL(playableBlob);
+
+          // ✅ 不自動播放：只載入預覽來源
+          preview.src = autoMp4Url;
+          preview.load(); // 保持暫停
+
+          // 顯示檔案資訊與下載連結
+          fileInfo.textContent = `已選擇：${file.name}（${(file.size/1024/1024).toFixed(2)} MB）｜已自動轉為 MP4 預覽`;
+          outEl.innerHTML = `<a href="${autoMp4Url}" download="converted.mp4">下載自動轉檔 MP4</a>`;
+          setActionsEnabled(true);
+        } else {
+          // 非 TS：直接以原始檔作為 playable
+          playableBlob = file;               // File 亦可作為 Blob 使用
+          playableName = inferInputName(file.name);
+          autoMp4Url   = '';
+
+          const url = URL.createObjectURL(file);
+          preview.src = url;
+          preview.load(); // ✅ 不自動播放
+
+          fileInfo.textContent = `已選擇：${file.name}（${(file.size/1024/1024).toFixed(2)} MB）`;
+          outEl.textContent = '';
+          setActionsEnabled(true);
+        }
+      } catch (e) {
+        errlog('載入/轉檔失敗：', e?.message || e);
+        alert('載入或自動轉檔失敗：' + (e?.message || e));
+        setActionsEnabled(false);
+      }
     };
+
+    /********** 預覽與進度條 **********/
+    let startTime = NaN;
+    let endTime   = NaN;
 
     preview.addEventListener('loadedmetadata', () => {
       const dur = preview.duration;
       seek.max = isFinite(dur) ? dur : 0;
       durEl.textContent = fmt(dur);
+      // 初始化「目前時間」顯示
+      curEl.textContent = fmt(preview.currentTime || 0);
     });
 
     preview.addEventListener('timeupdate', () => {
       const t = preview.currentTime;
       curEl.textContent = fmt(t);
-      if (Math.abs(seek.value - t) > 0.05) {
-        seek.value = t;
-      }
+      if (Math.abs(seek.value - t) > 0.05) seek.value = t;
     });
 
     seek.addEventListener('input', () => {
@@ -281,7 +326,11 @@
       endTime = t;
       endLabel.textContent = `${fmt(t)}（${t.toFixed(2)}s）`;
     };
-    btnReset.onclick = resetMarks;
+    btnReset.onclick = () => {
+      startTime = NaN; endTime = NaN;
+      startLabel.textContent = '未設定';
+      endLabel.textContent = '未設定';
+    };
 
     /********** 輔助：推斷輸入檔名（容器名）**********/
     function inferInputName(name) {
@@ -298,15 +347,15 @@
     btnClip.onclick = async () => {
       try {
         outEl.textContent = '';
-        if (!selectedFile) { alert('請先選擇檔案'); return; }
+        if (!playableBlob) { alert('請先選擇檔案'); return; }
         if (!isFinite(startTime) || !isFinite(endTime)) { alert('請先設定開始與結束時間'); return; }
         if (endTime <= startTime) { alert('結束時間必須大於開始時間'); return; }
 
-        const inName = inferInputName(selectedFile.name);
+        const inName = playableName || 'input.mp4';
         const outName = 'clip.mp4';
 
         log('開始快速剪輯（無轉碼）…', { startTime, endTime, inName, outName });
-        await ffmpeg.writeFile(inName, await fileToUint8Array(selectedFile));
+        await ffmpeg.writeFile(inName, await fileToUint8Array(playableBlob));
 
         const ss = startTime.toFixed(2);
         const to = endTime.toFixed(2);
@@ -314,7 +363,7 @@
 
         const data = await ffmpeg.readFile(outName);
         const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
-        outEl.innerHTML = `<a href="${url}" download="${outName}">下載剪輯檔案（${ss}s → ${to}s）</a>`;
+        outEl.innerHTML = `<a href="${url}" download="clip.mp4">下載剪輯檔案（${ss}s → ${to}s）</a>`;
         log('剪輯完成 ✅');
 
       } catch (e) {
@@ -327,24 +376,40 @@
     btnTranscode.onclick = async () => {
       try {
         outEl.textContent = '';
-        const file = selectedFile || fileInput.files?.[0];
+        // 若已是 TS 且自動轉檔完成，這個按鈕可視為「重新轉檔／再次下載」
+        const file = selectedFileRaw;
         if (!file) { alert("請先選擇檔案"); return; }
-        const inName = inferInputName(file.name);
-        await ffmpeg.writeFile(inName, await fileToUint8Array(file));
 
-        // 若來源是 TS，建議加上 aac_adtstoasc，避免 ADTS 與 MP4 容器不相容
-        const isTS = inName.endsWith('.ts');
-        const args = isTS
-          ? ['-i', inName, '-c', 'copy', '-bsf:a', 'aac_adtstoasc', 'output.mp4']
-          : ['-i', inName, '-movflags', 'faststart', 'output.mp4']; // 可能會重編碼，較慢
+        const lower = (file.name || '').toLowerCase();
+        const isTS = lower.endsWith('.ts');
 
-        log('開始轉檔…', args);
-        await ffmpeg.exec(args);
-
-        const data = await ffmpeg.readFile('output.mp4');
-        const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
-        outEl.innerHTML = `<a href="${url}" download="output.mp4">下載 output.mp4</a>`;
-        log('轉檔完成 ✅');
+        if (isTS) {
+          // 直接提供（或重新生成）自動轉檔後的 MP4
+          if (autoMp4Url) {
+            outEl.innerHTML = `<a href="${autoMp4Url}" download="converted.mp4">下載自動轉檔 MP4</a>`;
+            log('TS 已自動轉檔完成，提供下載連結（converted.mp4）');
+            return;
+          }
+          // 若沒有（例如被釋放），就再跑一次
+          const inName = 'input.ts';
+          const outName = 'automp4.mp4';
+          await ffmpeg.writeFile(inName, await fileToUint8Array(file));
+          await ffmpeg.exec(['-i', inName, '-c', 'copy', '-bsf:a', 'aac_adtstoasc', outName]);
+          const data = await ffmpeg.readFile(outName);
+          const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
+          autoMp4Url = url;
+          outEl.innerHTML = `<a href="${url}" download="converted.mp4">下載自動轉檔 MP4</a>`;
+          log('TS 重新自動轉檔完成 ✅');
+        } else {
+          // 非 TS：照原本流程（可能重編碼，較慢）
+          const inName = inferInputName(file.name);
+          await ffmpeg.writeFile(inName, await fileToUint8Array(file));
+          await ffmpeg.exec(['-i', inName, '-movflags', 'faststart', 'output.mp4']);
+          const data = await ffmpeg.readFile('output.mp4');
+          const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
+          outEl.innerHTML = `<a href="${url}" download="output.mp4">下載 output.mp4</a>`;
+          log('轉檔完成 ✅');
+        }
       } catch (e) {
         errlog('轉檔失敗：', e?.message || e);
         alert('轉檔失敗：' + (e?.message || e));
@@ -355,12 +420,11 @@
     btnThumbnail.onclick = async () => {
       try {
         outEl.textContent = '';
-        const file = selectedFile || fileInput.files?.[0];
-        if (!file) { alert("請先選擇影片檔"); return; }
-        const inName = inferInputName(file.name);
-        await ffmpeg.writeFile(inName, await fileToUint8Array(file));
+        if (!playableBlob) { alert("請先選擇影片檔"); return; }
 
-        // 以目前預覽時間點擷取單張影像
+        const inName = playableName || 'input.mp4';
+        await ffmpeg.writeFile(inName, await fileToUint8Array(playableBlob));
+
         const t = preview.currentTime;
         const ss = isFinite(t) ? t.toFixed(2) : '0';
         log('擷取縮圖（當下時間）…', { currentTime: ss, inName });
@@ -369,7 +433,7 @@
 
         const jpg = await ffmpeg.readFile('thumb.jpg');
         const url = URL.createObjectURL(new Blob([jpg.buffer], { type: 'image/jpeg' }));
-        outEl.innerHTML = `<img src="${url}" alt="縮圖" style="max-width: 240px; border-radius: 6px;" />`;
+        outEl.innerHTML = `<a href="${url}" download="thumb.jpg">下載縮圖（${ss}s）</a><br><img src="${url}" alt="縮圖" style="max-width:260px;margin-top:.5rem;border-radius:6px;" />`;
         log('擷取完成 ✅');
       } catch (e) {
         errlog('擷取縮圖失敗：', e?.message || e);
