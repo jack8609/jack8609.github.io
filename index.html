@@ -1,9 +1,10 @@
+
 <!doctype html>
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>前端預覽＋快速剪輯／轉檔／擷取縮圖｜FFmpeg.wasm 本地檔</title>
+  <title>前端預覽＋快速剪輯／下載完整轉檔／擷取縮圖｜FFmpeg.wasm 本地檔</title>
 
   <!-- ✅ COI Service Worker（需同源 HTTP 伺服器；不可 file://） -->
   <script src="./coi-serviceworker.min.js"></script>
@@ -29,7 +30,6 @@
     button:disabled { opacity: .5; cursor: not-allowed; }
     button.primary { border-color: var(--accent); color: #fff; background: #0c3a60; }
     .status { margin:.5rem 0; }
-    input[type="range"] { width: 520px; }
     .time { font-variant-numeric: tabular-nums; }
     .chip { background: #0f2338; color: #bfe3ff; border: 1px solid #1f3d5e; padding: .2rem .5rem; border-radius: 6px; }
     a { color: #8fbfff; }
@@ -37,17 +37,22 @@
     .col { display: grid; grid-template-columns: 1fr; gap: 1rem; }
     @media (min-width: 980px) { .col { grid-template-columns: 1.2fr 1fr; } }
     .group-title { margin: .5rem 0 .25rem; font-weight: 600; color: #c9d1d9; }
+
+    /* 雙滑桿樣式 */
+    .range-row { display: grid; grid-template-columns: auto 1fr auto; gap: .5rem; align-items: center; }
+    input[type="range"] { width: 100%; }
+    .range-label { width: 6.5rem; text-align: right; }
+    .current-time { margin-top: .5rem; color: #c9d1d9; }
+
     /* Log 折疊控制 */
     .log-panel { display: none; }
     .log-panel.show { display: block; }
-    .toggle-row { display: flex; align-items: center; gap: .5rem; margin-top: .75rem; }
-    .toggle-row label { user-select: none; }
   </style>
 </head>
 <body>
-  <h1>前端預覽＋快速剪輯／轉檔／擷取縮圖</h1>
+  <h1>前端預覽＋快速剪輯／下載完整轉檔／擷取縮圖</h1>
 
-  <!-- 檔案選擇與狀態 -->
+  <!-- 檔案選擇與狀態（含「顯示 Log」核取方塊） -->
   <div class="panel">
     <div class="controls">
       <!-- ✅ 明確支援 .ts，避免只能選「所有檔案」 -->
@@ -55,55 +60,53 @@
       <span id="fileInfo" class="hint">請選擇影片或音訊檔（支援 .mp4 / .ts / .mov / .mp3 等）</span>
     </div>
     <p class="status" id="status">狀態：初始化中…</p>
+    <div class="controls">
+      <label><input type="checkbox" id="toggleLog" /> 顯示 Log</label>
+    </div>
   </div>
 
-  <!-- 單一整合區塊：預覽 + 三個功能 -->
+  <!-- 單一整合區塊：預覽 + 雙滑桿 + 三個按鈕 -->
   <div class="panel">
     <div class="col">
-      <!-- 左側：預覽與定位 -->
+      <!-- 左側：預覽與雙滑桿 -->
       <div>
         <h3>預覽</h3>
         <video id="preview" controls playsinline style="max-width:100%; width:520px; background:#000; border-radius: 8px;"></video>
-        <div class="controls" style="margin-top:.75rem;">
-          <input id="seek" type="range" min="0" max="0" step="0.01" value="0" />
-          <span class="time"><span id="cur">00:00:00.00</span> / <span id="dur">00:00:00.00</span></span>
+
+        <!-- 當前播放時間 / 片長 -->
+        <div class="current-time time">
+          目前：<span id="cur">00:00:00.00</span>　／　片長：<span id="dur">00:00:00.00</span>
         </div>
-        <div class="controls">
-          <button id="setStart">設定開始（取目前時間）</button>
-          <button id="setEnd">設定結束（取目前時間）</button>
-          <button id="btnReset">重設開始/結束</button>
-          <span class="chip">開始：<span id="startLabel">未設定</span></span>
-          <span class="chip">結束：<span id="endLabel">未設定</span></span>
+
+        <!-- 雙滑桿：控制剪輯起訖 -->
+        <div style="margin-top:.75rem;">
+          <div class="group-title">剪輯範圍</div>
+
+          <div class="range-row">
+            <span class="range-label">開始：</span>
+            <input id="startRange" type="range" min="0" max="0" step="0.01" value="0" />
+            <span class="chip time" id="startLabel">00:00:00.00</span>
+          </div>
+
+          <div class="range-row">
+            <span class="range-label">結束：</span>
+            <input id="endRange" type="range" min="0" max="0" step="0.01" value="0" />
+            <span class="chip time" id="endLabel">00:00:00.00</span>
+          </div>
+
+          <p class="hint">提示：無轉碼剪輯（<code>-c copy</code>）速度最快，但裁切點以「關鍵幀」為準，可能略有偏差；若需要毫秒級精準，請改用重編碼（會較慢）。</p>
         </div>
-        <p class="hint">提示：無轉碼剪輯（<code>-c copy</code>）速度最快，但裁切點以「關鍵幀」為準，可能略有偏差；若需要毫秒級精準，請改用重編碼（會較慢）。</p>
       </div>
 
-      <!-- 右側：三種輸出功能（整合於同一區塊） -->
+      <!-- 右側：三個操作按鈕（同一排） -->
       <div>
-        <h3>輸出功能</h3>
-
-        <div class="group-title">快速剪輯（不重編碼）</div>
+        <h3>輸出操作</h3>
         <div class="controls">
           <button id="btnClip" class="primary" disabled>剪輯並輸出</button>
-        </div>
-
-        <div class="group-title">轉檔（MP4）</div>
-        <div class="controls">
-          <button id="btnTranscode" disabled>轉成 MP4</button>
-        </div>
-
-        <div class="group-title">擷取縮圖（使用目前預覽時間點）</div>
-        <div class="controls">
+          <button id="btnDownloadFull" disabled>下載完整轉檔</button>
           <button id="btnThumbnail" disabled>擷取縮圖</button>
         </div>
-
         <p id="out" class="hint"></p>
-
-        <!-- 顯示 Log 的勾選 -->
-        <div class="toggle-row">
-          <input type="checkbox" id="toggleLog" />
-          <label for="toggleLog">顯示 Log</label>
-        </div>
       </div>
     </div>
   </div>
@@ -124,18 +127,18 @@
     const fileInput = document.getElementById('file');
     const fileInfo  = document.getElementById('fileInfo');
     const preview   = document.getElementById('preview');
-    const seek      = document.getElementById('seek');
     const curEl     = document.getElementById('cur');
     const durEl     = document.getElementById('dur');
-    const setStartBtn = document.getElementById('setStart');
-    const setEndBtn   = document.getElementById('setEnd');
-    const startLabel  = document.getElementById('startLabel');
-    const endLabel    = document.getElementById('endLabel');
-    const btnClip     = document.getElementById('btnClip');
-    const btnReset    = document.getElementById('btnReset');
-    const btnTranscode= document.getElementById('btnTranscode');
-    const btnThumbnail= document.getElementById('btnThumbnail');
-    const outEl       = document.getElementById('out');
+
+    const startRange = document.getElementById('startRange');
+    const endRange   = document.getElementById('endRange');
+    const startLabel = document.getElementById('startLabel');
+    const endLabel   = document.getElementById('endLabel');
+
+    const btnClip         = document.getElementById('btnClip');
+    const btnDownloadFull = document.getElementById('btnDownloadFull');
+    const btnThumbnail    = document.getElementById('btnThumbnail');
+    const outEl           = document.getElementById('out');
 
     // Log 顯示控制：預設隱藏；勾選才顯示
     toggleLog.addEventListener('change', () => {
@@ -168,7 +171,7 @@
     const CORE_WASM = new URL('./core/ffmpeg-core.wasm', BASE).href;
     const WORKER_JS = new URL('./ffmpeg/worker.js', BASE).href;
 
-    const fileToUint8Array = async (file) => new Uint8Array(await file.arrayBuffer());
+    const fileToUint8Array = async (fileOrBlob) => new Uint8Array(await fileOrBlob.arrayBuffer());
 
     // 匯入你本地的 FFmpeg ESM 入口
     let FFmpegCtor;
@@ -211,22 +214,24 @@
 
     /********** 狀態：原始檔 / 可播放檔（TS 會轉成 MP4） **********/
     let selectedFileRaw = null;  // 使用者上傳的原始檔（File）
-    let playableBlob    = null;  // 可供預覽與後續操作的 Blob（若為 TS，則為自動轉檔後 MP4）
+    let playableBlob    = null;  // 可供預覽與後續操作的 Blob（若為 TS，則為自動轉檔 MP4）
     let playableName    = '';    // 對應 ffmpeg FS 的輸入檔名（通常 'input.mp4'）
-    let autoMp4Url      = '';    // 若 TS 自動轉檔，這是供下載的 MP4 連結（ObjectURL）
+    let autoMp4Url      = '';    // TS 自動轉檔的 MP4 ObjectURL（提供下載）
 
-    const resetMarks = () => {
-      startTime = NaN;
-      endTime = NaN;
-      startLabel.textContent = '未設定';
-      endLabel.textContent = '未設定';
-      outEl.innerHTML = '';
-    };
     function setActionsEnabled(enabled) {
       btnClip.disabled = !enabled;
-      btnTranscode.disabled = !enabled;
+      btnDownloadFull.disabled = !enabled;
       btnThumbnail.disabled = !enabled;
     }
+
+    const resetClipUI = (dur = 0) => {
+      // 初始化雙滑桿：start=0, end=dur
+      startRange.min = 0; startRange.max = dur || 0; startRange.value = 0;
+      endRange.min = 0; endRange.max = dur || 0; endRange.value = dur || 0;
+      startLabel.textContent = fmt(0);
+      endLabel.textContent   = fmt(dur || 0);
+      outEl.textContent = '';
+    };
 
     /********** 檔案變更（不自動播放；TS 自動重封裝成 MP4 作為預覽） **********/
     fileInput.onchange = async () => {
@@ -235,22 +240,22 @@
         selectedFileRaw = null;
         playableBlob = null;
         playableName = '';
+        autoMp4Url = '';
         setActionsEnabled(false);
         preview.removeAttribute('src');
         preview.load();
         fileInfo.textContent = '請選擇影片或音訊檔（支援 .mp4 / .ts / .mov / .mp3 等）';
+        resetClipUI(0);
         return;
       }
 
       selectedFileRaw = file;
-      resetMarks();
-
       const lower = (file.name || '').toLowerCase();
       const isTS = lower.endsWith('.ts');
 
       try {
         if (isTS) {
-          // 🔁 先將 TS 快速重封裝成 MP4（不轉碼），並用此 MP4 作預覽與後續操作
+          // 🔁 TS → MP4（快速重封裝，不轉碼），並用此 MP4 作預覽與後續操作
           const inName = 'input.ts';
           const outName = 'automp4.mp4';
 
@@ -266,9 +271,8 @@
 
           // ✅ 不自動播放：只載入預覽來源
           preview.src = autoMp4Url;
-          preview.load(); // 保持暫停
+          preview.load();
 
-          // 顯示檔案資訊與下載連結
           fileInfo.textContent = `已選擇：${file.name}（${(file.size/1024/1024).toFixed(2)} MB）｜已自動轉為 MP4 預覽`;
           outEl.innerHTML = `<a href="${autoMp4Url}" download="converted.mp4">下載自動轉檔 MP4</a>`;
           setActionsEnabled(true);
@@ -276,7 +280,7 @@
           // 非 TS：直接以原始檔作為 playable
           playableBlob = file;               // File 亦可作為 Blob 使用
           playableName = inferInputName(file.name);
-          autoMp4Url   = '';
+          autoMp4Url   = '';                 // 非 TS 無須自動轉檔
 
           const url = URL.createObjectURL(file);
           preview.src = url;
@@ -293,44 +297,29 @@
       }
     };
 
-    /********** 預覽與進度條 **********/
-    let startTime = NaN;
-    let endTime   = NaN;
-
+    /********** 預覽與片長、當前時間展示 **********/
     preview.addEventListener('loadedmetadata', () => {
       const dur = preview.duration;
-      seek.max = isFinite(dur) ? dur : 0;
       durEl.textContent = fmt(dur);
-      // 初始化「目前時間」顯示
       curEl.textContent = fmt(preview.currentTime || 0);
+      resetClipUI(dur);
     });
 
     preview.addEventListener('timeupdate', () => {
       const t = preview.currentTime;
       curEl.textContent = fmt(t);
-      if (Math.abs(seek.value - t) > 0.05) seek.value = t;
     });
 
-    seek.addEventListener('input', () => {
-      const v = parseFloat(seek.value);
-      if (isFinite(v)) preview.currentTime = v;
-    });
-
-    setStartBtn.onclick = () => {
-      const t = preview.currentTime;
-      startTime = t;
-      startLabel.textContent = `${fmt(t)}（${t.toFixed(2)}s）`;
+    /********** 雙滑桿聯動（確保 start <= end；並更新標籤） **********/
+    const clampRanges = () => {
+      const s = parseFloat(startRange.value);
+      const e = parseFloat(endRange.value);
+      if (e < s) startRange.value = e; // 保證 start <= end
+      startLabel.textContent = fmt(parseFloat(startRange.value));
+      endLabel.textContent   = fmt(parseFloat(endRange.value));
     };
-    setEndBtn.onclick = () => {
-      const t = preview.currentTime;
-      endTime = t;
-      endLabel.textContent = `${fmt(t)}（${t.toFixed(2)}s）`;
-    };
-    btnReset.onclick = () => {
-      startTime = NaN; endTime = NaN;
-      startLabel.textContent = '未設定';
-      endLabel.textContent = '未設定';
-    };
+    startRange.addEventListener('input', clampRanges);
+    endRange.addEventListener('input', clampRanges);
 
     /********** 輔助：推斷輸入檔名（容器名）**********/
     function inferInputName(name) {
@@ -343,57 +332,57 @@
       return 'input.mp4';
     }
 
-    /********** 功能 1：快速剪輯（不重編碼，-c copy）**********/
+    /********** 功能 1：剪輯並輸出（不重編碼，-c copy）**********/
     btnClip.onclick = async () => {
       try {
         outEl.textContent = '';
         if (!playableBlob) { alert('請先選擇檔案'); return; }
-        if (!isFinite(startTime) || !isFinite(endTime)) { alert('請先設定開始與結束時間'); return; }
-        if (endTime <= startTime) { alert('結束時間必須大於開始時間'); return; }
+
+        const s = parseFloat(startRange.value);
+        const e = parseFloat(endRange.value);
+        if (!isFinite(s) || !isFinite(e)) { alert('請設定開始與結束時間'); return; }
+        if (e <= s) { alert('結束時間必須大於開始時間'); return; }
 
         const inName = playableName || 'input.mp4';
         const outName = 'clip.mp4';
 
-        log('開始快速剪輯（無轉碼）…', { startTime, endTime, inName, outName });
+        log('開始快速剪輯（無轉碼）…', { start: s, end: e, inName, outName });
         await ffmpeg.writeFile(inName, await fileToUint8Array(playableBlob));
 
-        const ss = startTime.toFixed(2);
-        const to = endTime.toFixed(2);
+        const ss = s.toFixed(2);
+        const to = e.toFixed(2);
         await ffmpeg.exec(['-i', inName, '-ss', ss, '-to', to, '-c', 'copy', outName]);
 
         const data = await ffmpeg.readFile(outName);
         const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
-        outEl.innerHTML = `<a href="${url}" download="clip.mp4">下載剪輯檔案（${ss}s → ${to}s）</a>`;
+        outEl.innerHTML = `<a href="${url}" download="clip.mp4">下載剪輯檔（${ss}s → ${to}s）</a>`;
         log('剪輯完成 ✅');
-
       } catch (e) {
         errlog('快速剪輯失敗：', e?.message || e);
         alert('剪輯失敗：' + (e?.message || e));
       }
     };
 
-    /********** 功能 2：轉檔（MP4）**********/
-    btnTranscode.onclick = async () => {
+    /********** 功能 2：下載完整轉檔 **********/
+    btnDownloadFull.onclick = async () => {
       try {
         outEl.textContent = '';
-        // 若已是 TS 且自動轉檔完成，這個按鈕可視為「重新轉檔／再次下載」
-        const file = selectedFileRaw;
-        if (!file) { alert("請先選擇檔案"); return; }
+        if (!selectedFileRaw) { alert("請先選擇檔案"); return; }
 
-        const lower = (file.name || '').toLowerCase();
+        const lower = (selectedFileRaw.name || '').toLowerCase();
         const isTS = lower.endsWith('.ts');
 
         if (isTS) {
-          // 直接提供（或重新生成）自動轉檔後的 MP4
+          // 若 TS 已自動轉檔，直接提供該 MP4 的下載
           if (autoMp4Url) {
             outEl.innerHTML = `<a href="${autoMp4Url}" download="converted.mp4">下載自動轉檔 MP4</a>`;
             log('TS 已自動轉檔完成，提供下載連結（converted.mp4）');
             return;
           }
-          // 若沒有（例如被釋放），就再跑一次
+          // 若無（例如被釋放），重新轉一次
           const inName = 'input.ts';
           const outName = 'automp4.mp4';
-          await ffmpeg.writeFile(inName, await fileToUint8Array(file));
+          await ffmpeg.writeFile(inName, await fileToUint8Array(selectedFileRaw));
           await ffmpeg.exec(['-i', inName, '-c', 'copy', '-bsf:a', 'aac_adtstoasc', outName]);
           const data = await ffmpeg.readFile(outName);
           const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
@@ -401,18 +390,18 @@
           outEl.innerHTML = `<a href="${url}" download="converted.mp4">下載自動轉檔 MP4</a>`;
           log('TS 重新自動轉檔完成 ✅');
         } else {
-          // 非 TS：照原本流程（可能重編碼，較慢）
-          const inName = inferInputName(file.name);
-          await ffmpeg.writeFile(inName, await fileToUint8Array(file));
+          // 非 TS：轉成 MP4（可能重編碼／或僅重封裝，視來源而定）
+          const inName = inferInputName(selectedFileRaw.name);
+          await ffmpeg.writeFile(inName, await fileToUint8Array(selectedFileRaw));
           await ffmpeg.exec(['-i', inName, '-movflags', 'faststart', 'output.mp4']);
           const data = await ffmpeg.readFile('output.mp4');
           const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
           outEl.innerHTML = `<a href="${url}" download="output.mp4">下載 output.mp4</a>`;
-          log('轉檔完成 ✅');
+          log('完整轉檔完成 ✅');
         }
       } catch (e) {
-        errlog('轉檔失敗：', e?.message || e);
-        alert('轉檔失敗：' + (e?.message || e));
+        errlog('完整轉檔失敗：', e?.message || e);
+        alert('完整轉檔失敗：' + (e?.message || e));
       }
     };
 
@@ -433,7 +422,7 @@
 
         const jpg = await ffmpeg.readFile('thumb.jpg');
         const url = URL.createObjectURL(new Blob([jpg.buffer], { type: 'image/jpeg' }));
-        outEl.innerHTML = `<a href="${url}" download="thumb.jpg">下載縮圖（${ss}s）</a><br><img src="${url}" alt="縮圖" style="max-width:260px;margin-top:.5rem;border-radius:6px;" />`;
+        outEl.innerHTML = `<a href="${url}" download="thumb.jpg">下載縮圖（${ss}s）</a><br><img src="${url}" alt="縮圖" style="max-width:240px;border-radius:6px;margin-top:.5rem;" />`;
         log('擷取完成 ✅');
       } catch (e) {
         errlog('擷取縮圖失敗：', e?.message || e);
