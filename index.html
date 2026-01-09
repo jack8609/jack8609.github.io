@@ -383,7 +383,8 @@
           const outName = 'automp4.mp4';
 
           await ffmpeg.writeFile(inName, await fileToUint8Array(file));
-          const args = ['-i', inName, '-c', 'copy', '-bsf:a', 'aac_adtstoasc', outName];
+          // backup const args = ['-i', inName, '-c', 'copy', '-bsf:a', 'aac_adtstoasc', outName];
+          const args = ['-i', inName, '-c', 'copy', '-tag:v', 'hvc1', '-bsf:a', 'aac_adtstoasc', '-movflags', '+faststart', outName];
           log('TS 自動重封裝為 MP4…', args);
           await ffmpeg.exec(args);
 
