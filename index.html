@@ -1,328 +1,1765 @@
-<!DOCTYPE html>
-<html lang="zh-TW">
+<!doctype html>
+<html lang="zh-Hant">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>違規檢舉小幫手</title>
-    <style>
-        body { font-family: sans-serif; background: #f4f4f9; padding: 20px; line-height: 1.6; }
-        .container { max-width: 900px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        h1 { color: #333; text-align: center; }
-        .section { margin-bottom: 30px; border-bottom: 1px solid #eee; padding-bottom: 20px; }
-        video { width: 100%; border: 1px solid #ccc; border-radius: 4px; }
-        .controls { margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap; }
-        button { padding: 10px 15px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; }
-        button:hover { background: #0056b3; }
-        button.secondary { background: #6c757d; }
-        canvas { display: none; } /* 隱藏處理用的畫布 */
-        .preview-area { display: flex; gap: 10px; margin-top: 15px; }
-        .preview-box { border: 1px solid #ddd; padding: 5px; text-align: center; width: 45%; }
-        .preview-box img { width: 100%; height: auto; }
-        
-        #staticImageContainer { position: relative; cursor: crosshair; margin-top: 15px; }
-        #staticImage { max-width: 100%; height: auto; display: none; }
-        #selectionBox {
-            position: absolute;
-            border: 2px solid red;
-            background: rgba(255, 0, 0, 0.1);
-            display: none;
-            pointer-events: none;
-        }
-        .options-group { margin-bottom: 15px; }
-        .options-group label { display: block; margin-bottom: 5px; }
-    </style>
-</head>
-<body>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>違規檢舉小幫手</title>
 
-<div class="container">
-    <h1>違規檢舉小幫手</h1>
-    <div class="section">
-        <h3>第一步：載入違規影片</h3>
-        <input type="file" id="videoUpload" accept="video/*">
-        <div style="margin-top:10px;">
-            <video id="mainVideo" controls></video>
-        </div>
-    </div>
-    <div class="section">
-        <h3>第二步：擷取車牌特寫</h3>
-        <p>請將影片停在車牌清晰處，點擊下方按鈕開始，然後在靜態圖片上拖拉框選車牌範圍 (放開滑鼠即完成擷取)。</p>
-        <button onclick="startLicensePlateCrop()">開始擷取並框選車牌位置</button>
-        <div id="staticImageContainer">
-            <img id="staticImage" src="#" alt="靜態截圖預覽">
-            <div id="selectionBox"></div>
-        </div>
-        <div id="platePreviewArea">
-            <p>目前車牌預覽：</p>
-            <img id="plateImg" style="border: 2px solid red; max-width: 200px; display: none;">
-        </div>
-    </div>
-    <div class="section">
-        <h3>第三步：生成違規截圖</h3>
-        <p>移動影片時間軸，分別按下按鈕生成圖片。</p>
-         <div class="options-group">
-            <label for="platePosition">車牌擺放位置：</label>
-            <select id="platePosition">
-                <option value="bottomRight">右下角</option>
-                <option value="topRight">右上角</option>
-                <option value="bottomLeft">左下角</option>
-                <option value="topLeft">左上角</option>
-            </select>
-        </div>
-        <div class="options-group">
-            <label for="plateScale">車牌縮放大小 (%)：<span id="scaleValue">30%</span></label>
-            <input type="range" id="plateScale" min="10" max="50" value="30" oninput="document.getElementById('scaleValue').textContent = this.value + '%'">
-        </div>
-        <div class="controls">
-            <button onclick="generateReportImage('before')">1. 生成「違規前」圖片</button>
-            <button onclick="generateReportImage('after')">2. 生成「違規後」圖片</button>
-        </div>
-        <div class="preview-area">
-            <div class="preview-box">
-                <span>違規前預覽</span>
-                <img id="imgBefore">
-                <button class="secondary" onclick="downloadImg('imgBefore', 'before.jpg')">下載此圖</button>
-            </div>
-            <div class="preview-box">
-                <span>違規後預覽</span>
-                <img id="imgAfter">
-                <button class="secondary" onclick="downloadImg('imgAfter', 'after.jpg')">下載此圖</button>
-            </div>
-        </div>
-    </div>
-  <div class="section">
-      <h3>第四步：查詢違規地址</h3>
-      <input type="text" id="address" placeholder="先輸入地址，或直接點按鈕開啟地圖...">
-      <button class="secondary" onclick="openGoogleMap()">開啟 Google Map 查詢地址</button>
-  </div>
-</div>
+  <!-- ✅ COI Service Worker（需同源 HTTP 伺服器；不可 file://） -->
+  <script src="./coi-serviceworker.min.js"></script>
 
-<script>
-    const video = document.getElementById('mainVideo');
-    const staticImage = document.getElementById('staticImage');
-    const staticImageContainer = document.getElementById('staticImageContainer');
-    const selectionBox = document.getElementById('selectionBox');
-    const plateImg = document.getElementById('plateImg');
-    const videoUpload = document.getElementById('videoUpload');
-    const platePositionSelect = document.getElementById('platePosition'); 
-    const plateScaleInput = document.getElementById('plateScale'); 
+  <!-- 避免 favicon 404 -->
+  <link rel="icon" href="data:," />
 
-    let finalCanvas = document.createElement('canvas');
-    let startX, startY, currentX, currentY;
-    let isDrawing = false;
-    let finalCropCoords = {}; 
+  <style>
+    /* 你的 root 設定（已照你提供內容） */
+    :root {
+      /* 雙滑桿區 */
+      --rail-pad: 14px;              /* 軌道左右內距：JS 也會讀取 */
+      --track-height: 8px;           /* 軌道高度 */
+      --thumb-size: 18px;            /* 把手大小 */
+      --spacing-v: 18px;             /* 上下滑桿垂直間距（可調，例如 18/22/28/30px） */
+      --track-bg: #16181d;           /* 軌道底色（深色主題）#2a2f3a */
+      --select-bg: #1e6fd6;          /* 選取色帶顏色 */
+      --accent-color: #35a0ff;       /* 把手顏色 */
 
-    videoUpload.addEventListener('change', function() {
-        const file = this.files[0];
-        if (file) {
-            const url = URL.createObjectURL(file);
-            video.src = url;
-            staticImage.style.display = 'none';
-            plateImg.style.display = 'none';
-        }
-    });
-
-    function startLicensePlateCrop() {
-        if (!video.src || video.videoWidth === 0) {
-            alert("請先上傳並播放影片！");
-            return;
-        }
-        video.pause(); 
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = video.videoWidth;
-        tempCanvas.height = video.videoHeight;
-        const ctx = tempCanvas.getContext('2d');
-        ctx.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
-        const dataURL = tempCanvas.toDataURL('image/jpeg');
-
-        staticImage.src = dataURL;
-        staticImage.style.display = 'block'; 
-        selectionBox.style.display = 'none';
+      /* 主題色 */
+      --bg: #0e0f12;
+      --fg: #e6e6e6;
+      --panel: #16181d;
+      --border: #262a33;
     }
 
-    staticImageContainer.addEventListener('mousedown', (e) => {
-        e.preventDefault();
+    /* === Light 主題變數（新增）=== */
+    @media (prefers-color-scheme: light) {
+      /* 若使用者從未選過，且系統偏好 light，可作為初始參考（JS 會再覆蓋） */
+    }
+    
+    html[data-theme="light"] {
+      /* 依你深色版變數對應調成淺色系 */
+      --bg: #f6f7f9;          /* 背景 */
+      --fg: #111827;          /* 前景文字 */
+      --panel: #ffffff;       /* 面板底 */
+      --border: #d1d5db;      /* 邊框 */
+    
+      /* 雙滑桿與按鈕可視需求微調 */
+      --track-bg: #ffffff;    /* 軌道底色 */
+      --select-bg: #2563eb;   /* 選取色帶 */
+      --accent-color: #2563eb;/* 把手/強調色 */
+    }
+    
+    /* 右上角主題開關的基本樣式（新增） */
+    .theme-toggle {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      z-index: 9999;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      color: var(--fg);
+      border-radius: 999px;
+      padding: 6px 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.08);
+      user-select: none;
+    }
+    
+    .theme-toggle input[type="checkbox"] {
+      appearance: none;
+      width: 42px; height: 24px;
+      border-radius: 999px;
+      background: #9aa5b1;
+      position: relative;
+      outline: none;
+      cursor: pointer;
+      transition: background .2s ease;
+      border: 1px solid var(--border);
+    }
+    .theme-toggle input[type="checkbox"]::after {
+      content: "";
+      position: absolute;
+      top: 2px; left: 2px;
+      width: 18px; height: 18px;
+      background: #fff;
+      border-radius: 50%;
+      box-shadow: 0 1px 3px rgba(0,0,0,.2);
+      transition: transform .2s ease;
+    }
+    .theme-toggle input[type="checkbox"]:checked {
+      background: var(--accent-color);
+    }
+    .theme-toggle input[type="checkbox"]:checked::after {
+      transform: translateX(18px);
+    }
+    .theme-toggle .label {
+      font-size: 13px;
+      color: inherit;
+    }
+
+    /* ===== Light 主題修補：覆寫違規編輯器的顏色與對比 ===== */
+    html[data-theme="light"] .violation-editor {
+      color: var(--fg);
+      background: var(--panel);
+    }
+    
+    /* 工具列／預覽面板：使用淺色面板與邊框 */
+    html[data-theme="light"] .violation-editor .toolbar,
+    html[data-theme="light"] .violation-editor .preview {
+      background: var(--panel);
+      border-color: var(--border);
+    }
+    
+    /* label：在 Light 模式下提高對比，不再使用偏淡灰 */
+    html[data-theme="light"] .violation-editor label {
+      color: var(--fg); /* 或改為 #374151（更深的灰） */
+    }
+    
+    /* 所有表單與按鈕：改用淺色背景、深色文字 */
+    html[data-theme="light"] .violation-editor input[type="text"],
+    html[data-theme="light"] .violation-editor input[type="date"],
+    html[data-theme="light"] .violation-editor select,
+    html[data-theme="light"] .violation-editor textarea,
+    html[data-theme="light"] .violation-editor button {
+      background: #ffffff;          /* 由原本 #1d2129 改為白色 */
+      color: var(--fg);
+      border-color: var(--border);
+    }
+    
+    /* 文本框的邊界與焦點樣式 */
+    html[data-theme="light"] .violation-editor input:focus,
+    html[data-theme="light"] .violation-editor select:focus,
+    html[data-theme="light"] .violation-editor textarea:focus,
+    html[data-theme="light"] .violation-editor button:focus {
+      border-color: #2563eb;       /* 明亮模式可用更清晰的焦點色 */
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+    }
+    
+    /* 複製按鈕 hover：淺色背景下加一點陰影與顏色變化 */
+    html[data-theme="light"] .violation-editor .btn:hover {
+      background: #eef2f7;
+      border-color: #bfd3ff;
+    }
+    
+    /* 小排版：plate 分隔符顏色在 light 下改深一點 */
+    html[data-theme="light"] .violation-editor .dash {
+      color: #6b7280; /* 中灰，比 #9aa5b1 更清楚 */
+    }
+
+    .group-title {
+      margin: .5rem 0 .25rem;
+      font-weight: 600;
+      color: #c9d1d9; /* ← 這在 light 會偏淡 */
+    }
+    
+    /* ✅ 新增：明亮主題下覆寫為深字色（放在主題 CSS 之後） */
+    html[data-theme="light"] .group-title {
+      color: var(--fg);           /* 用主題前景色（#111827） */
+      /* 或如果你想更柔和一點：color: #374151; */
+    }
+
+    * { box-sizing: border-box; }
+    body { background: var(--bg); color: var(--fg); font-family: system-ui, -apple-system, "Segoe UI", Roboto; margin: 2rem; }
+    h1 { margin-top: 0; }
+    .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; }
+    .controls { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+    .log { white-space: pre-wrap; background:#0a0a0a; color:#86ff91; padding:1rem; min-height:10rem; border-radius: 8px; font-size: 0.92rem; }
+    button { padding: .55rem .85rem; border-radius: 8px; border: 1px solid #2a2f3a; background: var(--panel); color: var(--fg); cursor: pointer; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    button.primary { border-color: var(--accent-color); color: #fff; background: #0c3a60; }
+    .status { margin:.5rem 0; }
+    .time { font-variant-numeric: tabular-nums; }
+    .chip { background: #0f2338; color: #bfe3ff; border: 1px solid #1f3d5e; padding: .2rem .5rem; border-radius: 6px; }
+    a { color: #8fbfff; }
+    .hint { background: var(--panel); color: var(--fg); font-size: .9rem; }
+    .col { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+    @media (min-width: 980px) { .col { grid-template-columns: 1.2fr 1fr; } }
+    .group-title { margin: .5rem 0 .25rem; font-weight: 600; color: #c9d1d9; }
+
+    /* 讓影片與滑桿左右「切齊」：放進同一個容器並統一 padding */
+    .media-area {
+      padding: 0 var(--rail-pad);
+    }
+    .media-area video {
+      width: 100%;
+      max-width: 100%;
+      display: block;
+      background: #000;
+      border-radius: 8px;
+    }
+
+    /* 上下雙滑桿（你的範例邏輯，調整為與 .media-area 對齊） */
+    .stacked-slider { position: relative; margin-top: .75rem; }
+    .stacked-slider .rail {
+      position: relative;
+      height: calc(var(--spacing-v) * 2 + var(--track-height)); /* 容器高度由間距決定 */
+      /* 取消自身 padding，改由外層 .media-area 控制左右間距 */
+      padding: 0;
+    }
+    /* 上/下兩條軌道：與 .media-area 內緣對齊 */
+    .stacked-slider .track {
+      position: absolute;
+      left: 0; right: 0;
+      height: var(--track-height);
+      background: var(--track-bg);
+      border-radius: 6px;
+    }
+    .stacked-slider .track.top { top: 0; }
+    .stacked-slider .track.bottom { top: calc(var(--spacing-v) + var(--track-height)); }
+
+    /* 中間選取色帶（Start→End） */
+    .stacked-slider .selection {
+      position: absolute;
+      top: calc(var(--spacing-v) / 2 + var(--track-height) / 2);
+      height: var(--track-height);
+      background: var(--select-bg);
+      border-radius: 6px;
+      /* left/width 由 JS 動態設定（已對齊 .rail 的內緣） */
+    }
+
+    /* 上/下兩個 range（增大點擊熱區） */
+    .stacked-slider input[type="range"] {
+      position: absolute;
+      left: 0; right: 0; width: 100%;
+      margin: 0; background: transparent;
+      -webkit-appearance: none; appearance: none;
+      cursor: pointer;
+      height: var(--spacing-v);
+    }
+    .stacked-slider #startRange { top: 0; }
+    .stacked-slider #endRange   { top: var(--spacing-v); }
+
+    /* 隱藏原生軌道（只顯示 thumb） */
+    .stacked-slider input[type="range"]::-webkit-slider-runnable-track { height: var(--track-height); background: transparent; }
+    .stacked-slider input[type="range"]::-moz-range-track { height: var(--track-height); background: transparent; }
+
+    /* thumb 樣式（置中對齊） */
+    .stacked-slider input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none;
+      width: var(--thumb-size); height: var(--thumb-size);
+      border-radius: 50%;
+      background: var(--accent-color);
+      border: 2px solid #fff;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+      margin-top: calc(var(--track-height) / 2 - var(--thumb-size) / 2);
+    }
+    .stacked-slider input[type="range"]::-moz-range-thumb {
+      width: var(--thumb-size); height: var(--thumb-size);
+      border-radius: 50%;
+      background: var(--accent-color);
+      border: 2px solid #fff;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+
+    /* Log 折疊控制 */
+    .log-panel { display: none; }
+    .log-panel.show { display: block; }
+
+    /* 截圖預覽面板（為未來編輯預留空間） */
+    .shot-box { display: grid; grid-template-columns: 1fr; gap: .75rem; }
+    .shot-preview {
+      background: var(--panel); border: 1px solid var(--border);
+      min-height: 260px; display: flex; align-items: center; justify-content: center;
+      border-radius: 8px; overflow: auto;
+    }
+    .shot-preview img { max-width: 100%; height: auto; display: block; }
+  </style>
+</head>
+<body>
+  <h1>違規檢舉小幫手</h1>
+
+  <!-- 顯示在畫面最右上角的主題切換開關（新增） -->
+  <div class="theme-toggle" role="group" aria-label="主題切換">
+    <span class="label" id="themeLabel">深色</span>
+    <input type="checkbox" id="themeSwitch" aria-labelledby="themeLabel" />
+  </div>
+
+  <!-- 檔案選擇與狀態（含「顯示 Log」核取方塊） -->
+  <div class="panel">
+    <div class="controls">
+      <input id="file" type="file" accept="video/*,audio/*,.ts" />
+      <span id="fileInfo" class="hint">請選擇影片（支援 .mp4 / .ts / .mov 等）</span>
+    </div>
+    <p class="status" id="status">狀態：初始化中…</p>
+    <div class="controls">
+      <label><input type="checkbox" id="toggleLog" /> 顯示 Log</label>
+    </div>
+  </div>
+
+  <!-- 主面板：預覽 + 上下雙滑桿 + 按鈕 -->
+  <div class="panel">
+    <div class="col">
+      <!-- 左側：預覽與上下雙滑桿（同一 .media-area 中，左右切齊） -->
+      <div class="media-area">
+        <!-- <h3>預覽</h3> -->
+        <div>
+          <h3>輸出操作</h3>
+          <div class="controls">
+            <button id="btnClip" class="primary" disabled>剪輯並輸出</button>
+            <button id="btnDownloadFull" disabled>下載完整轉檔</button>
+            <button id="btnThumbnail" disabled>擷取縮圖</button>
+          </div>
+          <p id="out" class="hint"></p>
+        </div>
+
+        <video id="preview" controls playsinline></video>
+        <div class="time" style="margin-top:.5rem;">
+          目前：<span id="cur">00:00:00.00</span>　／　片長：<span id="dur">00:00:00.00</span>
+        </div>
+
+        <div class="stacked-slider">
+          <div class="rail" id="rail">
+            <div class="track top"></div>
+            <div class="track bottom"></div>
+            <div class="selection" id="selection"></div>
+
+            <!-- 上：開始滑桿（初始 0/100） -->
+            <input id="startRange" type="range" min="0" max="100" step="0.01" value="0" />
+            <!-- 下：結束滑桿（初始就在 100%） -->
+            <input id="endRange"   type="range" min="0" max="100" step="0.01" value="100" />
+          </div>
+
+          <div class="controls" style="margin-top:.5rem;">
+            <span class="chip time" id="startLabel">開始：00:00:00.00</span>
+            <span class="chip time" id="endLabel">結束：00:00:00.00</span>
+          </div>
+        </div>
+      </div>
+      <!-- 右側：編輯車牌、日期、違規事項區域 -->
+      <div>
+        <h3 class="group-title">違規資訊</h3>
+        <!-- Editor 掛載點（此節點會被 initViolationEditor() 插入內容） -->
+        <section id="violation-editor-root"></section>
+      </div>
+    </div>
+  </div>
+
+  <!-- 大型截圖預覽面板 -->
+  <div class="panel">
+    <h3>截圖預覽</h3>
+    <div class="shot-box">
+      <div id="shotPreview" class="shot-preview">
+        <span class="hint">尚未擷取縮圖</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Log（預設隱藏；勾選顯示） -->
+  <div id="logPanel" class="panel log-panel">
+    <h3>Log</h3>
+    <div class="log" id="log">Log：</div>
+  </div>
+
+  <script type="module">
+    /********** 基本 UI **********/
+    const statusEl   = document.getElementById('status');
+    const logEl      = document.getElementById('log');
+    const logPanel   = document.getElementById('logPanel');
+    const toggleLog  = document.getElementById('toggleLog');
+
+    const fileInput  = document.getElementById('file');
+    const fileInfo   = document.getElementById('fileInfo');
+    const preview    = document.getElementById('preview');
+    const curEl      = document.getElementById('cur');
+    const durEl      = document.getElementById('dur');
+
+    const rail       = document.getElementById('rail');
+    const selectionEl= document.getElementById('selection');
+
+    const startRange = document.getElementById('startRange');
+    const endRange   = document.getElementById('endRange');
+    const startLabel = document.getElementById('startLabel');
+    const endLabel   = document.getElementById('endLabel');
+
+    const btnClip         = document.getElementById('btnClip');
+    const btnDownloadFull = document.getElementById('btnDownloadFull');
+    const btnThumbnail    = document.getElementById('btnThumbnail');
+    const outEl           = document.getElementById('out');
+
+    const shotPreviewBox  = document.getElementById('shotPreview');
+
+    toggleLog.addEventListener('change', () => {
+      logPanel.classList.toggle('show', toggleLog.checked);
+    });
+
+    /********** 主題切換（深色 / 明亮） **********/
+    (function setupThemeToggle() {
+      const html = document.documentElement;
+      const sw = document.getElementById('themeSwitch');
+      const lbl = document.getElementById('themeLabel');
+      if (!sw || !lbl) return;
+    
+      // 根據 localStorage 或系統偏好初始化
+      const LS_KEY = 'app-theme';
+      const saved = localStorage.getItem(LS_KEY); // 'dark' | 'light' | null
+      const sysPrefersLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+    
+      let theme = saved || (sysPrefersLight ? 'light' : 'dark');
+      applyTheme(theme);
+    
+      // 切換事件
+      sw.addEventListener('change', () => {
+        theme = sw.checked ? 'light' : 'dark';
+        applyTheme(theme, true);
+      });
+    
+      // 套用主題並記錄
+      function applyTheme(mode, persist = false) {
+        if (mode === 'light') {
+          html.setAttribute('data-theme', 'light');
+          sw.checked = true;
+          lbl.textContent = '明亮';
+        } else {
+          html.removeAttribute('data-theme');
+          sw.checked = false;
+          lbl.textContent = '深色';
+        }
+        if (persist) localStorage.setItem(LS_KEY, mode);
+      }
+    })();
+
+    const log = (...msgs) => {
+      const ts = new Date().toISOString();
+      const s = msgs.map(m => { if (typeof m === 'string') return m; try { return JSON.stringify(m); } catch { return String(m); } }).join(' ');
+      logEl.textContent += `\n[${ts}] ${s}`;
+      logEl.scrollTop = logEl.scrollHeight;
+      console.log(...msgs);
+    };
+    const errlog = (...msgs) => { log('ERROR:', ...msgs); console.error(...msgs); };
+    const fmt = (t) => {
+      if (!isFinite(t)) return '00:00:00.00';
+      const h = Math.floor(t / 3600);
+      const m = Math.floor((t % 3600) / 60);
+      const s = t % 60;
+      return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${s.toFixed(2).padStart(5,'0')}`;
+    };
+
+    if ('ResizeObserver' in window && rail) {
+      const ro = new ResizeObserver(() => {
+        // 只要 rail 寬度有變化（panel 展開 / grid 變更 / 視窗 resize 等），重畫選取色帶
+        updateSelectionBar();
+      });
+      ro.observe(rail);
+    }
+
+    /********** FFmpeg 本地載入（classic worker + wasmBinary） **********/
+    const BASE = new URL('.', import.meta.url);
+    const CORE_JS   = new URL('./core/ffmpeg-core.js', BASE).href;
+    const CORE_WASM = new URL('./core/ffmpeg-core.wasm', BASE).href;
+    const WORKER_JS = new URL('./ffmpeg/worker.js', BASE).href;
+
+    const fileToUint8Array = async (fileOrBlob) => new Uint8Array(await fileOrBlob.arrayBuffer());
+
+    // 匯入你本地的 FFmpeg ESM 入口
+    let FFmpegCtor;
+    let ffmpeg;
+    try {
+      const mod = await import('./ffmpeg/index.js');
+      FFmpegCtor = mod.FFmpeg || mod.default;
+    } catch (e) {
+      statusEl.textContent = '狀態：載入 FFmpeg 入口失敗 ❌';
+      errlog('無法 import ./ffmpeg/index.js：', e?.message || e);
+    }
+
+    const startFFmpeg = async () => {
+      try {
+        statusEl.textContent = '狀態：等待 Service Worker 就緒…';
+        await navigator.serviceWorker.ready;
+        log('crossOriginIsolated =', String(self.crossOriginIsolated));
+        ffmpeg = new FFmpegCtor();
+        if (ffmpeg?.on) {
+          ffmpeg.on('log', ({ message }) => log('[ffmpeg]', message));
+          ffmpeg.on('progress', (p) => log('[progress]', JSON.stringify(p)));
+        }
+        statusEl.textContent = '狀態：正在載入 FFmpeg…（首次載入較慢）';
+        await ffmpeg.load({ coreURL: CORE_JS, wasmURL: CORE_WASM, workerURL: WORKER_JS });
+        statusEl.textContent = `狀態：FFmpeg 載入完成 ✅`;
+        log('FFmpeg 已就緒。');
+        setActionsEnabled(false);
+      } catch (err) {
+        statusEl.textContent = `狀態：載入失敗 ❌ ${err?.message || err}`;
+        errlog('初始化失敗：', err?.stack || err);
+      }
+    };
+
+    await startFFmpeg();
+
+    /********** 檔案狀態（TS → 自動重封裝 MP4） **********/
+    let selectedFileRaw = null;
+    let playableBlob    = null;
+    let playableName    = '';
+    let autoMp4Blob     = null;
+    let autoMp4Url      = '';
+    let currentObjectURL = '';
+    let FfmpegArgs = ['-i', 'inputfile', '-c', 'copy', '-tag:v', 'hvc1', '-bsf:a', 'aac_adtstoasc', '-movflags', '+faststart', 'automp4.mp4'];
+
+    function revokeURL(url) { try { if (url) URL.revokeObjectURL(url); } catch {} }
+    function setActionsEnabled(enabled) {
+      btnClip.disabled = !enabled;
+      btnDownloadFull.disabled = !enabled;
+      btnThumbnail.disabled = !enabled;
+    }
+    function resetClipUI(dur = 0) {
+      // 若 dur>0，改用片長；否則以 0/100 的初始百分比顯示
+      if (dur > 0) {
+        startRange.min = 0; endRange.min = 0;
+        startRange.max = dur; endRange.max = dur;
+        startRange.value = 0; endRange.value = dur;
+      } else {
+        startRange.min = 0; endRange.min = 0;
+        startRange.max = 100; endRange.max = 100;
+        startRange.value = 0; endRange.value = 100;  // 讓 endRange 預設在 100%
+      }
+      startLabel.textContent = `開始：${fmt(0)}`;
+      endLabel.textContent   = `結束：${fmt(dur || 0)}`;
+      updateSelectionBar();
+      outEl.textContent = '';
+      requestAnimationFrame(() => {     // 佈局完成後再保險重畫
+        updateSelectionBar();
+      });
+    }
+    function triggerDownloadFromBlob(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    /********** 檔案選擇（不自動播放；TS 自動重封裝 MP4） **********/
+    fileInput.onchange = async () => {
+      const file = fileInput.files?.[0];
+      revokeURL(currentObjectURL); currentObjectURL = '';
+      shotPreviewBox.innerHTML = '<span class="hint">尚未擷取縮圖</span>';
+
+      if (!file) {
+        selectedFileRaw = null; playableBlob = null; playableName = '';
+        autoMp4Blob = null; autoMp4Url = '';
+        setActionsEnabled(false);
+        preview.removeAttribute('src'); preview.load();
+        fileInfo.textContent = '請選擇影片（支援 .mp4 / .ts / .mov 等）';
+        resetClipUI(0);
+        return;
+      }
+
+      selectedFileRaw = file;
+      const lower = (file.name || '').toLowerCase();
+      const isTS = lower.endsWith('.ts');
+
+      try {
+        if (isTS) {
+          const inName = 'input.ts';
+          const outName = 'automp4.mp4';
+
+          await ffmpeg.writeFile(inName, await fileToUint8Array(file));
+          FfmpegArgs[1] = inName
+          FfmpegArgs[FfmpegArgs.length - 1] = outName
+          log('偵測到 TS 檔案自動重封裝為 MP4…', FfmpegArgs);
+          await ffmpeg.exec(FfmpegArgs);
+
+          const data = await ffmpeg.readFile(outName);
+          autoMp4Blob = new Blob([data.buffer], { type: 'video/mp4' });
+          playableBlob = autoMp4Blob;
+          playableName = 'input.mp4';
+          autoMp4Url   = URL.createObjectURL(autoMp4Blob);
+          currentObjectURL = autoMp4Url;
+          fileInfo.textContent = `已選擇：${file.name}（${(file.size/1024/1024).toFixed(2)} MB）｜已自動轉為 MP4 預覽`;
+        } else {
+          playableBlob = file;
+          playableName = inferInputName(file.name);
+          autoMp4Blob  = null; autoMp4Url = '';
+          currentObjectURL = URL.createObjectURL(file);
+          fileInfo.textContent = `已選擇：${file.name}（${(file.size/1024/1024).toFixed(2)} MB）`;
+        }
+        preview.src = currentObjectURL;
+        preview.load(); // 不自動播放
+        setActionsEnabled(true);
+      } catch (e) {
+        errlog('載入/轉檔失敗：', e?.message || e);
+        alert('載入或自動轉檔失敗：' + (e?.message || e));
+        setActionsEnabled(false);
+      }
+    };
+
+    /********** 預覽時間顯示 **********/
+    preview.addEventListener('loadedmetadata', () => {
+      const dur = preview.duration;
+      durEl.textContent = fmt(dur);
+      curEl.textContent = fmt(preview.currentTime || 0);
+      resetClipUI(isFinite(dur) ? dur : 0);
+    });
+    preview.addEventListener('timeupdate', () => {
+      curEl.textContent = fmt(preview.currentTime);
+    });
+
+    /********** 上下雙滑桿：聯動 + 連動預覽 + 著色選取範圍 **********/
+    function updateSelectionBar() {
+      // 若影片尚未載入，使用滑桿自身的 max（100）當百分比基準；載入後用片長（秒）
+      const hasDur = isFinite(preview.duration) && preview.duration > 0;
+      const rangeMax = hasDur ? preview.duration : parseFloat(startRange.max) || 100;
+
+      let startVal = parseFloat(startRange.value);
+      let endVal   = parseFloat(endRange.value);
+      if (startVal > endVal) [startVal, endVal] = [endVal, startVal];
+
+      const rect = rail.getBoundingClientRect();
+      const innerW = rect.width;
+
+      const startPct = Math.max(0, Math.min(1, startVal / rangeMax));
+      const endPct   = Math.max(0, Math.min(1, endVal   / rangeMax));
+      const leftPx   = innerW * startPct;
+      const widthPx  = innerW * (endPct - startPct);
+
+      selectionEl.style.left  = `${leftPx}px`;
+      selectionEl.style.width = `${widthPx}px`;
+    }
+
+    const clampAndPreview = (who) => {
+      const hasDur = isFinite(preview.duration) && preview.duration > 0;
+      let s = parseFloat(startRange.value);
+      let e = parseFloat(endRange.value);
+      if (who === 'start' && s > e) { endRange.value = s; e = s; }
+      if (who === 'end'   && e < s) { startRange.value = e; s = e; }
+
+      startLabel.textContent = `開始：${fmt(hasDur ? s : 0)}`;
+      endLabel.textContent   = `結束：${fmt(hasDur ? e : 0)}`;
+
+      // 只有在影片已載入時才跳時間點
+      if (hasDur) {
+        if (who === 'start' && isFinite(s)) preview.currentTime = s;
+        if (who === 'end'   && isFinite(e)) preview.currentTime = e;
+      }
+
+      updateSelectionBar();
+    };
+    startRange.addEventListener('input', () => clampAndPreview('start'));
+    endRange.addEventListener('input',   () => clampAndPreview('end'));
+    window.addEventListener('resize', updateSelectionBar);
+
+    /********** 輔助：推斷輸入檔名（容器名）**********/
+    function inferInputName(name) {
+      const lower = (name || '').toLowerCase();
+      if (lower.endsWith('.mp4')) return 'input.mp4';
+      if (lower.endsWith('.ts'))  return 'input.ts';
+      if (lower.endsWith('.mov')) return 'input.mov';
+      if (lower.endsWith('.mkv')) return 'input.mkv';
+      if (lower.endsWith('.mp3')) return 'input.mp3';
+      return 'input.mp4';
+    }
+
+    /********** 功能 1：剪輯並輸出（不重編碼，-c copy）→ 直接下載 **********/
+    btnClip.onclick = async () => {
+      try {
+        outEl.textContent = '';
+        if (!playableBlob) { alert('請先選擇檔案'); return; }
+
+        const s = parseFloat(startRange.value);
+        const e = parseFloat(endRange.value);
+        if (!isFinite(s) || !isFinite(e)) { alert('請設定開始與結束時間'); return; }
+        if (e <= s) { alert('結束時間必須大於開始時間'); return; }
+
+        const inName = playableName || 'input.mp4';
+        const outName = 'clip.mp4';
+
+        log('開始快速剪輯（無轉碼）…', { start: s, end: e, inName, outName });
+        await ffmpeg.writeFile(inName, await fileToUint8Array(playableBlob));
+
+        const ss = s.toFixed(2);
+        const to = e.toFixed(2);
+        await ffmpeg.exec(['-i', inName, '-ss', ss, '-to', to, '-c', 'copy', outName]);
+
+        const data = await ffmpeg.readFile(outName);
+        const blob = new Blob([data.buffer], { type: 'video/mp4' });
+        triggerDownloadFromBlob(blob, outName);
+        outEl.textContent = `已下載剪輯檔（${ss}s → ${to}s）`;
+        log('剪輯完成並已觸發下載 ✅');
+      } catch (e) {
+        errlog('快速剪輯失敗：', e?.message || e);
+        alert('剪輯失敗：' + (e?.message || e));
+      }
+    };
+
+    /********** 功能 2：下載完整轉檔（TS 直接下載自動 MP4；非 TS 轉一次再下載） **********/
+    btnDownloadFull.onclick = async () => {
+      try {
+        outEl.textContent = '';
+        if (!selectedFileRaw) { alert("請先選擇檔案"); return; }
+
+        const lower = (selectedFileRaw.name || '').toLowerCase();
+        const isTS = lower.endsWith('.ts');
+
+        if (isTS) {
+          if (autoMp4Blob) {
+            triggerDownloadFromBlob(autoMp4Blob, 'converted.mp4');
+            outEl.textContent = '已下載自動轉檔 MP4';
+            log('TS 已自動轉檔完成，觸發下載 converted.mp4 ✅');
+            return;
+          }
+          const inName = 'input.ts';
+          const outName = 'automp4.mp4';
+          await ffmpeg.writeFile(inName, await fileToUint8Array(selectedFileRaw));
+          FfmpegArgs[1] = inName
+          FfmpegArgs[FfmpegArgs.length - 1] = outName
+          await ffmpeg.exec(FfmpegArgs);
+          const data = await ffmpeg.readFile(outName);
+          const blob = new Blob([data.buffer], { type: 'video/mp4' });
+          triggerDownloadFromBlob(blob, 'converted.mp4');
+          outEl.textContent = '已下載自動轉檔 MP4';
+          log('TS 重新自動轉檔後觸發下載 ✅');
+        } else {
+          const inName = inferInputName(selectedFileRaw.name);
+          await ffmpeg.writeFile(inName, await fileToUint8Array(selectedFileRaw));
+          await ffmpeg.exec(['-i', inName, '-movflags', 'faststart', 'output.mp4']);
+          const data = await ffmpeg.readFile('output.mp4');
+          const blob = new Blob([data.buffer], { type: 'video/mp4' });
+          triggerDownloadFromBlob(blob, 'output.mp4');
+          outEl.textContent = '已下載 output.mp4';
+          log('完整轉檔完成並已觸發下載 ✅');
+        }
+      } catch (e) {
+        errlog('完整轉檔失敗：', e?.message || e);
+        alert('完整轉檔失敗：' + (e?.message || e));
+      }
+    };
+
+    /********** 功能 3：擷取縮圖（使用目前預覽時間點）→ 大面板顯示 **********/
+    btnThumbnail.onclick = async () => {
+      try {
+        // 提示擷取中（沿用你的 UI 容器）
+        shotPreviewBox.innerHTML = '<span class="hint">擷取中…</span>';
+    
+        // 驗證來源（沿用你的 preview <video>）
+        if (!preview || !preview.videoWidth) {
+          alert("影片尚未載入或沒有可用影格");
+          shotPreviewBox.innerHTML = '<span class="hint">尚未擷取縮圖</span>';
+          return;
+        }
+    
+        // 與目前影格同步：優先 requestVideoFrameCallback，否則退回 requestAnimationFrame
+        await new Promise((resolve) => {
+          if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
+            let done = false;
+            preview.requestVideoFrameCallback(() => { if (!done) { done = true; resolve(); } });
+            // 若影片已暫停，避免等待
+            if (preview.paused) { done = true; resolve(); }
+          } else {
+            requestAnimationFrame(() => resolve());
+          }
+        });
+    
+        const w = preview.videoWidth;
+        const h = preview.videoHeight;
+    
+        // 以臨時 Canvas 擷取（不改你既有 DOM）
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+    
+        // 高效擷取：createImageBitmap(preview) → drawImage；失敗時退回直接 drawImage(preview)
+        if ('createImageBitmap' in window) {
+          try {
+            const bmp = await createImageBitmap(preview);
+            ctx.drawImage(bmp, 0, 0, w, h);
+            bmp.close?.();
+          } catch {
+            ctx.drawImage(preview, 0, 0, w, h);
+          }
+        } else {
+          ctx.drawImage(preview, 0, 0, w, h);
+        }
+    
+        // 產生 PNG Blob 與 URL（你要 JPEG/WebP 也可把 type/quality 改掉）
+        const blob = await new Promise((resolve, reject) =>
+          canvas.toBlob(b => b ? resolve(b) : reject(new Error('toBlob 失敗')), 'image/png', 0.92)
+        );
+        const url = URL.createObjectURL(blob);
+    
+        // 顯示到你保留的 #shotPreview（不新增任何外部節點/屬性）
+        shotPreviewBox.innerHTML = '';
+        const img = document.createElement('img');
+        const t = preview.currentTime;
+        const ss = isFinite(t) ? t.toFixed(2) : '0';
+        img.src = url;
+        img.alt = `縮圖（${ss}s）`;
+        img.loading = 'lazy';
+        img.decoding = 'async';
+        shotPreviewBox.appendChild(img);
+    
+        // 更新狀態面板（沿用你的 outEl）
+        outEl.textContent = `已擷取縮圖（${ss}s）`;
+    
+        // 紀錄（沿用你的 log）
+        log('Canvas 擷取完成 ✅', { currentTime: ss, width: w, height: h });
+
+        // 顯示到 #shotPreview 完成後，初始化編輯器（把容器與主頁的 <video id="preview"> 傳進去）
+        EditorLite.init(shotPreviewBox, { videoEl: preview, snapshotURL: url });
+
+        // 若你要同時下載快照，打開以下兩行（不影響其他功能）：
+        // const a = document.createElement('a'); a.href = url; a.download = `snapshot_${Date.now()}.png`; a.click();
+    
+        // 若需清理 URL，請在你既有的「重置／清除」流程裡調用 URL.revokeObjectURL(url)
+      } catch (e) {
+        shotPreviewBox.innerHTML = '<span class="hint">尚未擷取縮圖</span>';
+        errlog('擷取縮圖失敗：', e?.message || e);
+        alert('擷取縮圖失敗：' + (e?.message || e));
+      }
+    };
+
+    /** =========================
+     * 違規紀錄編輯器（命名空間版）
+     * - 左靠齊、手機不超出框線
+     * - 24h 時/分下拉（00–23 / 00–59）
+     * - 車牌兩格：最多 4 位英數、轉大寫、去非英數；寬度 80px
+     * - 可編輯 textarea；暫停自動更新；複製到剪貼簿
+     * - 樣式使用你的主題色 var(--panel)/var(--border)/var(--fg)
+     * ========================= */
+    function initViolationEditor(root) {
+      // ----- 建立結構（加上樣式前綴容器） -----
+      root.innerHTML = `
+        <style>
+          .violation-editor * { box-sizing: border-box; }
+          .violation-editor {
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans TC", Arial, "PingFang TC", "Microsoft JhengHei", sans-serif;
+            color: var(--fg);
+            background: var(--panel);
+            line-height: 1.5;
+          }
+          .violation-editor .toolbar {
+            display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center;
+            border: 1px solid var(--border); padding: 12px; border-radius: 6px; background: var(--panel);
+          }
+          .violation-editor .group { display: inline-flex; align-items: center; gap: 8px; flex: 0 1 auto; }
+          @media (max-width: 640px) { .violation-editor .group.full { flex-basis: 100%; } }
+          .violation-editor label { font-size: 14px; color: #9aa5b1; white-space: nowrap; flex: 0 0 auto; }
+    
+          .violation-editor input[type="text"],
+          .violation-editor input[type="date"],
+          .violation-editor select,
+          .violation-editor textarea,
+          .violation-editor button {
+            border: 1px solid var(--border);
+            padding: 6px 8px; font-size: 14px; border-radius: 6px;
+            background: var(--panel); color: var(--fg); outline: none;
+          }
+          .violation-editor input:focus,
+          .violation-editor select:focus,
+          .violation-editor textarea:focus,
+          .violation-editor button:focus {
+            border-color: #1f3d5e;
+            box-shadow: 0 0 0 3px rgba(31, 61, 94, 0.25);
+          }
+    
+          /* 車牌輸入框縮窄：每格 80px */
+          .violation-editor #ve-plate1, .violation-editor #ve-plate2 { width: 80px; }
+          .violation-editor .plate-boxes { display: inline-flex; gap: 8px; align-items: center; }
+          .violation-editor .dash { color: #9aa5b1; user-select: none; }
+    
+          /* 24h 時間下拉 */
+          .violation-editor .time-selects { display: inline-flex; gap: 8px; align-items: center; }
+          .violation-editor .time-selects select { min-width: 80px; }
+    
+          /* 預覽／輸出區 */
+          .violation-editor .preview {
+            margin-top: 14px; border: 1px solid var(--border); padding: 12px;
+            background: var(--panel); border-radius: 6px;
+          }
+          .violation-editor textarea#ve-output {
+            width: 100%; height: 140px; font-size: 18px; font-weight: 700;
+            border: none; background: transparent; resize: vertical; line-height: 1.7;
+          }
+    
+          .violation-editor .control-row { display: flex; align-items: center; gap: 12px; margin-top: 8px; flex-wrap: wrap; }
+          .violation-editor .btn { var(--panel); color: var(--fg); border-color: var(--border); cursor: pointer; }
+          .violation-editor .btn:hover { background: #222833; border-color: #1f3d5e; }
+        </style>
+    
+        <div class="violation-editor">
+          <div class="toolbar" role="group" aria-label="違規資料輸入區">
+            <!-- 車牌（每格最多 4 字，英數、轉大寫） -->
+            <div class="group">
+              <label for="ve-plate1">車牌號碼：</label>
+              <div class="plate-boxes">
+                <input id="ve-plate1" type="text" inputmode="latin" maxlength="4" placeholder="ABCD" aria-label="車牌前段（最多 4 英數字）" />
+                <span class="dash">—</span>
+                <input id="ve-plate2" type="text" inputmode="latin" maxlength="4" placeholder="1234" aria-label="車牌後段（最多 4 英數字）" />
+              </div>
+            </div>
+    
+            <!-- 違規項目 -->
+            <div class="group">
+              <label for="ve-violation">違規項目：</label>
+              <select id="ve-violation">
+                <option value="">（請選擇）</option>
+                <option value="不依規定使用燈光">不依規定使用燈光</option>
+                <option value="臨時違規停車">臨時違規停車</option>
+                <option value="超速行駛">超速行駛</option>
+                <option value="闖紅燈">闖紅燈</option>
+                <option value="未依標線行駛">未依標線行駛</option>
+                <!-- 可自行新增更多選項 -->
+              </select>
+            </div>
+    
+            <!-- 日期 -->
+            <div class="group">
+              <label for="ve-date">違規日期：</label>
+              <input id="ve-date" type="date" />
+            </div>
+    
+            <!-- 時間（24h 下拉） -->
+            <div class="group">
+              <label for="ve-hour">違規時間：</label>
+              <div class="time-selects" aria-label="違規時間（24小時制）">
+                <select id="ve-hour" aria-label="小時（00-23）"></select>
+                <select id="ve-minute" aria-label="分鐘（00-59）"></select>
+              </div>
+            </div>
+    
+            <!-- 路段 -->
+            <div class="group full">
+              <label for="ve-road">路段：</label>
+              <input id="ve-road" type="text" style="min-width: 240px; flex: 1 1 auto;"
+                     value="違規地址" placeholder="請在此填寫違規地址" aria-label="請在此填寫違規地址" />
+            </div>
+          </div>
+    
+          <!-- 可編輯輸出 -->
+          <div class="preview" aria-live="polite">
+            <textarea id="ve-output" spellcheck="false"></textarea>
+            <div class="control-row">
+              <label><input type="checkbox" id="ve-pause"> 暫停自動更新</label>
+              <button class="btn" id="ve-copy" type="button" aria-label="複製到剪貼簿">複製到剪貼簿</button>
+            </div>
+          </div>
+        </div>
+      `;
+    
+      // ----- 作用域工具 -----
+      const $ = (sel) => root.querySelector(sel);
+      // 24h 時間下拉
+      function buildTimeOptions() {
+        const hSel = $('#ve-hour'); const mSel = $('#ve-minute');
+        hSel.innerHTML = ''; mSel.innerHTML = '';
+        for (let h = 0; h <= 23; h++) {
+          const opt = document.createElement('option'); opt.value = String(h).padStart(2, '0'); opt.textContent = opt.value; hSel.appendChild(opt);
+        }
+        for (let m = 0; m <= 59; m++) {
+          const opt = document.createElement('option'); opt.value = String(m).padStart(2, '0'); opt.textContent = opt.value; mSel.appendChild(opt);
+        }
+      }
+    
+      // 預設日期時間
+      function setDefaultDateTime() {
+        const now = new Date();
+        const yyyy = now.getFullYear();
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const dd = String(now.getDate()).padStart(2, '0');
+        $('#ve-date').value = `${yyyy}-${mm}-${dd}`;
+        const rounded = Math.round(now.getMinutes() / 10) * 10;
+        $('#ve-hour').value = String(now.getHours()).padStart(2, '0');
+        $('#ve-minute').value = String(rounded % 60).padStart(2, '0');
+      }
+    
+      // 車牌輸入：英數、轉大寫、最多 4 字
+      function sanitizePlate(el) {
+        el.addEventListener('input', () => {
+          const cleaned = el.value.replace(/[^0-9a-z]/gi, '').toUpperCase().slice(0, 4);
+          if (cleaned !== el.value) el.value = cleaned;
+          updateOutput();
+        });
+        el.addEventListener('change', updateOutput);
+      }
+    
+      // yyyy/mm/dd
+      function formatDateToYMD(dateStr) {
+        if (!dateStr) return '';
+        const d = new Date(dateStr + 'T00:00:00'); if (isNaN(d.getTime())) return '';
+        const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0');
+        return `${y}/${m}/${day}`;
+      }
+    
+      // 組合文字
+      function buildText() {
+        const p1 = ($('#ve-plate1').value || '');
+        const p2 = ($('#ve-plate2').value || '');
+        const plate = (p1 || p2) ? `${p1}${p1 && p2 ? '-' : ''}${p2}` : '（車號未填）';
+        const d = formatDateToYMD($('#ve-date').value);
+        const hh = $('#ve-hour').value || '00';
+        const min = $('#ve-minute').value || '00';
+        const dt = d ? `${d} ${hh}:${min}` : '（日期/時間未填）';
+        const road = ($('#ve-road').value || '').trim() || '請在此填寫違規地址';
+        const vioSel = $('#ve-violation'); const vio = vioSel.value || '（尚未選擇違規項目）';
+        return `${dt}，車號: ${plate} 於 "${road}"，${vio}。`;
+      }
+    
+      // 更新 textarea（可暫停）
+      function updateOutput() {
+        if ($('#ve-pause').checked) return;
+        $('#ve-output').value = buildText();
+      }
+    
+      // Toast
+      function toast(msg) {
+        const div = document.createElement('div');
+        Object.assign(div.style, {
+          position: 'fixed', left: '50%', bottom: '24px', transform: 'translateX(-50%)',
+          background: '#1d2129', color: '#fff', padding: '8px 12px', borderRadius: '6px',
+          fontSize: '14px', zIndex: '9999', border: '1px solid var(--border)'
+        });
+        div.textContent = msg; document.body.appendChild(div); setTimeout(() => div.remove(), 1200);
+      }
+    
+      // 綁定事件
+      function bindEvents() {
+        ['#ve-date','#ve-hour','#ve-minute','#ve-violation','#ve-road'].forEach(sel => {
+          root.querySelector(sel).addEventListener('input', updateOutput);
+          root.querySelector(sel).addEventListener('change', updateOutput);
+        });
+        $('#ve-pause').addEventListener('change', function () { if (!this.checked) updateOutput(); });
+    
+        // 複製到剪貼簿
+        $('#ve-copy').addEventListener('click', async () => {
+          const text = $('#ve-output').value;
+          try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              await navigator.clipboard.writeText(text); toast('已複製到剪貼簿');
+            } else {
+              const ta = $('#ve-output'); ta.select(); document.execCommand('copy'); toast('已複製到剪貼簿'); ta.setSelectionRange(ta.value.length, ta.value.length);
+            }
+          } catch (e) { alert('複製失敗，請手動選取後按 Ctrl+C。'); }
+        });
+      }
+    
+      // 初始化
+      (function init() {
+        buildTimeOptions();
+        setDefaultDateTime();
+        sanitizePlate($('#ve-plate1'));
+        sanitizePlate($('#ve-plate2'));
+        bindEvents();
+        updateOutput();
+      })();
+    }
+    
+    // 掛載到右側欄位（主面板載入後即可）
+    const veMount = document.getElementById('violation-editor-root');
+    if (veMount) initViolationEditor(veMount);
+
+    /*** === EditorLite 模組（最小整合到 #shotPreview）=== ***/
+    /*** =========================
+     *  EditorLite（深色主題・極簡）
+     *  左：截圖預覽＋工具列＋主畫布
+     *  右：已生成的截圖列表（獨立捲軸）
+     *  新增：撤銷紅框、列表持久化、移除按鈕
+     *  ========================= ***/
+    
+    // 一次性注入 EditorLite 版面樣式（只影響 #shotPreview 內部）
+    (function ensureEditorLiteStyles() {
+      const id = 'editorlite-styles';
+      if (document.getElementById(id)) return;
+      const style = document.createElement('style');
+      style.id = id;
+      style.textContent = `
+        /* Grid：左主畫布 / 右列表 */
+        #shotPreview .editor-grid {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) 340px;
+          grid-auto-rows: auto;
+          gap: 14px;
+          align-items: start;
+        }
+        /* 左側區塊：標題＋工具列＋主畫布 */
+        #shotPreview .editor-left { display: flex; flex-direction: column; gap: 10px; }
+        #shotPreview .editor-header { display: flex; align-items: center; gap: 12px; }
+        #shotPreview .editor-header h3 { margin: 0; font-weight: 600; color: var(--fg); }
+        #shotPreview .tool-row { display: flex; gap: 8px; flex-wrap: wrap; }
+        #shotPreview .tool-row .btn {
+          padding: 8px 12px; border: 1px solid var(--border); background: var(--panel); color: var(--fg);
+          border-radius: 6px; cursor: pointer; font-weight: 600;
+        }
+        #shotPreview .tool-row .btn:hover { background: var(--panel); }
+    
+        /* 主畫布 */
+        #shotPreview .editor-stage {
+          position: relative;
+          background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px;
+          min-height: 360px;
+        }
+        #shotPreview #staticImageContainer { position: relative; }
+        #shotPreview #staticImage { max-width: 100%; height: auto; display: block; }
+        #shotPreview #drawingOverlay { position: absolute; left: 0; top: 0; display: none; pointer-events: auto; }
+        #shotPreview #selectionBox {
+          position: absolute; border: 2px solid #e53935; background: rgba(229,57,53,.12); display: none;
+          border-radius: 4px;
+        }
+    
+        /* 車牌預覽列（工具列下方、主畫布上方） */
+        #shotPreview .plate-preview {
+          display: none; gap: 10px; align-items: center; padding: 8px;
+          border: 1px dashed var(--border); border-radius: 6px; background: var(--panel);
+        }
+        #shotPreview .plate-preview img { border: 2px solid #e53935; max-width: 150px; height: auto; }
+        #shotPreview .plate-preview .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        #shotPreview .plate-preview label { color: var(--fg); }
+    
+        /* 右側列表（固定高度 + 自己的捲軸） */
+        #shotPreview .editor-right {
+          border: 1px solid var(--border); border-radius: 8px; padding: 10px; background: var(--panel);
+          display: flex; flex-direction: column; gap: 8px;
+          max-height: 80vh; /* 固定高度，避免拉長整頁 */
+        }
+        #shotPreview .editor-right h3 { margin: 0; font-weight: 600; color: var(--fg); }
+        #shotPreview #generatedImagesArea {
+          display: flex; flex-direction: column; gap: 12px;
+          overflow: auto; /* 讓列表自己捲動 */
+          flex: 1;       /* 填滿右側，可滾動 */
+        }
+        #shotPreview .generated-image-card {
+          border: 1px solid #000; border-radius: 8px; padding: 8px; background: var(--panel);
+        }
+        #shotPreview .generated-image-card .inner {
+          border: 1px solid #66bb6a; border-radius: 6px; padding: 6px; background: var(--panel);
+        }
+        #shotPreview .generated-image-card .header {
+          display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 6px; color: var(--fg);
+        }
+        #shotPreview .generated-image-card .btn-row { display: flex; gap: 8px; }
+        #shotPreview .generated-image-card img { max-width: 100%; height: auto; cursor: pointer; border-radius: 4px; }
+        #shotPreview .generated-image-card .download-btn,
+        #shotPreview .generated-image-card .remove-btn {
+          padding: 6px 10px; border: 1px solid var(--border); background: var(--panel); color: var(--fg); border-radius: 6px;
+          white-space: nowrap;
+        }
+        #shotPreview .generated-image-card .download-btn:hover,
+        #shotPreview .generated-image-card .remove-btn:hover { background: var(--panel); }
+    
+        /* 窄螢幕：右列下移堆疊 */
+        @media (max-width: 840px) {
+          #shotPreview .editor-grid { grid-template-columns: 1fr; }
+        }
+      `;
+      document.head.appendChild(style);
+    })();
+    
+    // ================= EditorLite 主體 =================
+    const EditorLite = (() => {
+      // 參照
+      let container;      // #shotPreview
+      let videoEl;        // <video id="preview">
+      let snapshotURL = '';
+    
+      // 左區：工具列、車牌列、主畫布
+      let staticImageContainer, staticImage, selectionBox, drawingOverlay;
+      let platePreviewArea, plateImg, platePositionSelect, plateScaleInput;
+    
+      // 右區：已生成列表（持久化）
+      let generatedImagesArea;
+      const generatedItems = []; // {id, url, ts}
+    
+      // 狀態
+      let finalCanvas = document.createElement('canvas');
+      let startX, startY, currentX, currentY;
+      let isDrawing = false;
+      let finalCropCoords = {};
+      const dragThreshold = 5;
+      let isDrawingMode = false;
+      let drawnShapes = [];
+      let plateImageInMemory = null;
+      let currentShape = null;
+    
+      // 撤銷
+      function undoLastShape() {
+        if (drawnShapes.length > 0) {
+          drawnShapes.pop();
+          drawOverlayContent();
+        }
+      }
+      let keybound = false;
+    
+      // 紅框選項
+      let drawingModeBtn, drawingShapeSelect, lineThicknessInput, rotationCheckbox;
+    
+      // ========= 公開 API：初始化 =========
+      function init(host, { videoEl: v, snapshotURL: url } = {}) {
+        container = host;
+        videoEl = v;
+        snapshotURL = url || '';
+    
+        // 清空容器（外層不動）
+        container.innerHTML = '';
+    
+        // Grid：左、右
+        const grid = document.createElement('div');
+        grid.className = 'editor-grid';
+    
+        // ---- 左側：標題、工具列（含撤銷）、車牌列、主畫布 ----
+        const left = document.createElement('section');
+        left.className = 'editor-left';
+    
+        // 標題＋工具列
+        const header = document.createElement('div');
+        header.className = 'editor-header';
+        const h3 = document.createElement('h3'); h3.textContent = ''; //截圖預覽
+        const toolRow = document.createElement('div'); toolRow.className = 'tool-row';
+    
+        const btnCrop = document.createElement('button'); btnCrop.textContent = '擷取車牌範圍'; btnCrop.className = 'btn';
+        drawingModeBtn = document.createElement('button'); drawingModeBtn.textContent = '啟用/關閉自訂紅框'; drawingModeBtn.className = 'btn';
+        const btnUndo = document.createElement('button'); btnUndo.textContent = '撤銷紅框 (Ctrl+Z)'; btnUndo.className = 'btn';
+        const btnGenerate = document.createElement('button'); btnGenerate.textContent = '產生最終截圖'; btnGenerate.className = 'btn';
+    
+        toolRow.append(btnCrop, drawingModeBtn, btnUndo, btnGenerate);
+        header.append(h3, toolRow);
+        left.appendChild(header);
+    
+        // 車牌預覽列
+        platePreviewArea = document.createElement('div');
+        platePreviewArea.className = 'plate-preview';
+        const plateLabel = document.createElement('span'); plateLabel.textContent = '車牌預覽：'; plateLabel.style.color = 'var(--fg)';
+        plateImg = document.createElement('img'); plateImg.alt = '車牌預覽圖'; plateImg.style.display = 'none';
+    
+        const posGroup = document.createElement('div'); posGroup.className = 'row';
+        const posLabel = document.createElement('label'); posLabel.textContent = '位置';
+        platePositionSelect = document.createElement('select');
+        ['bottomRight','topRight','bottomLeft','topLeft'].forEach(v => {
+          const opt = document.createElement('option'); opt.value = v;
+          opt.textContent = ({bottomRight:'右下角', topRight:'右上角', bottomLeft:'左下角', topLeft:'左上角'})[v];
+          platePositionSelect.appendChild(opt);
+        });
+    
+        const scaleGroup = document.createElement('div'); scaleGroup.className = 'row';
+        const scaleLabel = document.createElement('label'); scaleLabel.textContent = '縮放(%)';
+        plateScaleInput = document.createElement('input'); plateScaleInput.type = 'range'; plateScaleInput.min = '10'; plateScaleInput.max = '50'; plateScaleInput.value = '30';
+        const scaleValue = document.createElement('span'); scaleValue.id = 'scaleValue'; scaleValue.textContent = '30%';
+    
+        plateScaleInput.addEventListener('input', () => { scaleValue.textContent = `${plateScaleInput.value}%`; drawOverlayContent(); });
+        platePositionSelect.addEventListener('change', drawOverlayContent);
+    
+        posGroup.append(posLabel, platePositionSelect);
+        scaleGroup.append(scaleLabel, plateScaleInput, scaleValue);
+        platePreviewArea.append(plateLabel, plateImg, posGroup, scaleGroup);
+        left.appendChild(platePreviewArea);
+    
+        // 主畫布
+        const stage = document.createElement('div');
+        stage.className = 'editor-stage';
+    
+        staticImageContainer = document.createElement('div');
+        staticImageContainer.id = 'staticImageContainer';
+        staticImageContainer.style.cursor = 'crosshair';
+        staticImageContainer.style.touchAction = 'none';
+    
+        staticImage = document.createElement('img');
+        staticImage.id = 'staticImage';
+        staticImage.alt = '靜態截圖預覽';
+        staticImage.style.display = 'none';
+    
+        selectionBox = document.createElement('div'); selectionBox.id = 'selectionBox';
+        drawingOverlay = document.createElement('canvas'); drawingOverlay.id = 'drawingOverlay';
+    
+        staticImageContainer.append(staticImage, selectionBox, drawingOverlay);
+        stage.appendChild(staticImageContainer);
+        left.appendChild(stage);
+    
+        // ---- 右側：列表（固定高度 + 自己捲軸） ----
+        const right = document.createElement('aside');
+        right.className = 'editor-right';
+        const rh3 = document.createElement('h3'); rh3.textContent = '已生成的截圖列表';
+        generatedImagesArea = document.createElement('div'); generatedImagesArea.id = 'generatedImagesArea';
+        right.append(rh3, generatedImagesArea);
+    
+        // 組裝
+        grid.append(left, right);
+        container.appendChild(grid);
+    
+        // 綁定事件
+        btnCrop.onclick = startLicensePlateCrop;
+        drawingModeBtn.onclick = toggleDrawingMode;
+        btnUndo.onclick = undoLastShape;
+        btnGenerate.onclick = generateReportImage;
+    
+        // 快捷鍵：撤銷
+        if (!keybound) {
+          keybound = true;
+          window.addEventListener('keydown', (e) => {
+            const isZ = (e.key === 'z' || e.key === 'Z');
+            const withCmd = e.metaKey || e.ctrlKey;
+            if (withCmd && isZ) { e.preventDefault(); undoLastShape(); }
+          });
+        }
+    
+        // 有 snapshotURL：預載底圖＋建立 overlay
+        if (snapshotURL) { staticImage.src = snapshotURL; staticImage.style.display = 'block'; setupDrawingOverlay(); }
+    
+        // 重新渲染既有生成列表（持久化）
+        rebuildGeneratedList();
+        
+        // ===== 新增：還原車牌預覽列 =====
+        restorePlatePreviewIfAny();
+        
+        // ✅ 保險：同步右欄高度貼齊左欄
+        syncRightHeightWithLeft();
+      }
+
+      function syncRightHeightWithLeft() {
+        const leftStage = container.querySelector('.editor-left');   // 左欄（含標題、工具列、主畫布）
+        const rightPane = container.querySelector('.editor-right');  // 右欄（列表）
+        if (!leftStage || !rightPane) return;
+      
+        // 設為左欄實際高度（含 padding/border）
+        rightPane.style.height = `${leftStage.offsetHeight}px`;
+      
+        // 追蹤變化（左欄變動時自動同步）
+        if ('ResizeObserver' in window) {
+          const ro = new ResizeObserver(() => {
+            rightPane.style.height = `${leftStage.offsetHeight}px`;
+          });
+          ro.observe(leftStage);
+        } else {
+          // Fallback：視窗縮放時同步
+          window.addEventListener('resize', () => {
+            rightPane.style.height = `${leftStage.offsetHeight}px`;
+          });
+        }
+      }
+
+      // ===== 實作：擷取車牌 → 顯示預覽列 =====
+      function startLicensePlateCrop() {
+        if (!videoEl || !videoEl.src || videoEl.videoWidth === 0) {
+          alert('請先在主頁載入並預覽影片！'); return;
+        }
+        videoEl.pause();
+        const c = document.createElement('canvas');
+        c.width = videoEl.videoWidth; c.height = videoEl.videoHeight;
+        const ctx = c.getContext('2d'); ctx.drawImage(videoEl, 0, 0, c.width, c.height);
+        staticImage.src = c.toDataURL('image/jpeg');
+        staticImage.style.display = 'block';
+        selectionBox.style.display = 'none';
+        setupDrawingOverlay();
+        if (isDrawingMode) toggleDrawingMode();
+      }
+    
+      // ===== Overlay：尺寸與事件綁定 =====
+      function setupDrawingOverlay() {
+        if (staticImage.style.display === 'none') return;
+        const rect = staticImage.getBoundingClientRect();
+        drawingOverlay.width = rect.width;
+        drawingOverlay.height = rect.height;
+        const baseRect = staticImageContainer.getBoundingClientRect();
+        drawingOverlay.style.left = `${rect.left - baseRect.left}px`;
+        drawingOverlay.style.top  = `${rect.top  - baseRect.top}px`;
+        drawingOverlay.style.display = 'block';
+    
+        drawingOverlay.addEventListener('pointerdown', startUserDrawing);
+        drawingOverlay.addEventListener('pointermove', drawUserMoving);
+        drawingOverlay.addEventListener('pointerup', stopUserDrawing);
+        drawingOverlay.addEventListener('pointercancel', stopUserDrawing);
+    
+        staticImageContainer.addEventListener('pointerdown', onSelectStart, { passive: false });
+        staticImageContainer.addEventListener('pointermove', onSelectMove, { passive: false });
+        staticImageContainer.addEventListener('pointerup',   onSelectEnd,  { passive: false });
+        staticImageContainer.addEventListener('pointercancel', onSelectEnd, { passive: false });
+    
+        drawOverlayContent();
+    
+        // 追蹤尺寸變化
+        if ('ResizeObserver' in window) {
+          const ro = new ResizeObserver(() => {
+            const r = staticImage.getBoundingClientRect();
+            drawingOverlay.width = r.width;
+            drawingOverlay.height = r.height;
+            const b = staticImageContainer.getBoundingClientRect();
+            drawingOverlay.style.left = `${r.left - b.left}px`;
+            drawingOverlay.style.top  = `${r.top  - b.top}px`;
+            drawOverlayContent();
+          });
+          ro.observe(staticImageContainer);
+        }
+      }
+    
+      // ===== 框選車牌（選擇矩形） =====
+      function onSelectStart(e) {
+        if (!isPrimaryPointer(e) || isDrawingMode) return;
+        e.preventDefault(); e.stopPropagation();
         isDrawing = true;
-        const rect = staticImage.getBoundingClientRect(); 
-        // 確保座標從 0 開始
+        const rect = staticImage.getBoundingClientRect();
         startX = Math.round(e.clientX - rect.left);
         startY = Math.round(e.clientY - rect.top);
         selectionBox.style.display = 'block';
-        selectionBox.style.left = startX + 'px';
-        selectionBox.style.top = startY + 'px';
+        selectionBox.style.left = `${startX}px`;
+        selectionBox.style.top  = `${startY}px`;
         selectionBox.style.width = '0px';
-        selectionBox.style.height = '0px';
-    });
-
-    staticImageContainer.addEventListener('mousemove', (e) => {
-        if (!isDrawing) return;
+        selectionBox.style.height= '0px';
+        staticImageContainer.setPointerCapture?.(e.pointerId);
+      }
+      function onSelectMove(e) {
+        if (!isDrawing || isDrawingMode) return;
+        e.preventDefault(); e.stopPropagation();
         const rect = staticImage.getBoundingClientRect();
         currentX = Math.round(e.clientX - rect.left);
         currentY = Math.round(e.clientY - rect.top);
         const width = currentX - startX;
-        const height = currentY - startY;
-
-        selectionBox.style.left = (width > 0 ? startX : currentX) + 'px';
-        selectionBox.style.top = (height > 0 ? startY : currentY) + 'px';
-        selectionBox.style.width = Math.abs(width) + 'px';
-        selectionBox.style.height = Math.abs(height) + 'px';
-    });
-
-    // *** 修正重點：使用拖拉的起點/終點座標計算最終裁切範圍 ***
-    window.addEventListener('mouseup', () => {
-        if (!isDrawing) return;
+        const height= currentY - startY;
+        selectionBox.style.left = `${width > 0 ? startX : currentX}px`;
+        selectionBox.style.top  = `${height> 0 ? startY : currentY}px`;
+        selectionBox.style.width= `${Math.abs(width)}px`;
+        selectionBox.style.height=`${Math.abs(height)}px`;
+      }
+      function onSelectEnd(e) {
+        if (!isDrawing || isDrawingMode) return;
         isDrawing = false;
-        
-        selectionBox.style.display = 'none'; 
-
-        const displayWidth = staticImage.clientWidth;
-        const displayHeight = staticImage.clientHeight;
-        const actualWidth = video.videoWidth;
-        const actualHeight = video.videoHeight;
-
-        // 縮放比例尺
-        const scaleX = actualWidth / displayWidth;
-        const scaleY = actualHeight / displayHeight;
-
-        // 使用 startX, startY 和 currentX, currentY 來計算範圍
-        const selectionLeft = Math.min(startX, currentX);
-        const selectionTop = Math.min(startY, currentY);
-        const selectionRight = Math.max(startX, currentX);
-        const selectionBottom = Math.max(startY, currentY);
-
-        // 轉換為原始影片解析度的像素座標
-        finalCropCoords = {
-            x1: Math.round(selectionLeft * scaleX),
-            y1: Math.round(selectionTop * scaleY),
-            x2: Math.round(selectionRight * scaleX),
-            y2: Math.round(selectionBottom * scaleY)
-        };
-        
-        // *** DEBUG LOG 1 (更新) ***
-        console.log("Mouse Up Event - Coordinates calculated:", finalCropCoords);
-        console.log(`Dimensions: Width ${finalCropCoords.x2 - finalCropCoords.x1}, Height ${finalCropCoords.y2 - finalCropCoords.y1}`);
-
-
-        // 觸發自動裁切
+        staticImageContainer.releasePointerCapture?.(e.pointerId);
+        selectionBox.style.display = 'none';
+    
+        const dx = Math.abs(currentX - startX);
+        const dy = Math.abs(currentY - startY);
+        if (dx < dragThreshold && dy < dragThreshold) return;
+    
+        const displayW = staticImage.clientWidth;
+        const displayH = staticImage.clientHeight;
+        const actualW  = videoEl.videoWidth;
+        const actualH  = videoEl.videoHeight;
+        const scaleX = actualW / displayW;
+        const scaleY = actualH / displayH;
+        const x1 = Math.min(startX, currentX), y1 = Math.min(startY, currentY);
+        const x2 = Math.max(startX, currentX), y2 = Math.max(startY, currentY);
+    
+        finalCropCoords = { x1: Math.round(x1*scaleX), y1: Math.round(y1*scaleY), x2: Math.round(x2*scaleX), y2: Math.round(y2*scaleY) };
         confirmCropArea();
-    });
-
-    // 執行最終裁切 (confirmCropArea，從 Video Source 繪製)
-    function confirmCropArea() {
-        const cropWidth = finalCropCoords.x2 - finalCropCoords.x1;
-        const cropHeight = finalCropCoords.y2 - finalCropCoords.y1;
-
-        if (cropWidth <= 0 || cropHeight <= 0) {
-            // *** DEBUG LOG 2 (更新) ***
-            console.error("Crop dimensions are invalid (zero or negative). Not drawing to canvas.");
-             return; 
-        }
-
-        const plateCanvas = document.createElement('canvas'); 
-        plateCanvas.width = cropWidth;
-        plateCanvas.height = cropHeight;
-        const pCtx = plateCanvas.getContext('2d');
-        
+      }
+    
+      function confirmCropArea() {
+        const cropW = finalCropCoords.x2 - finalCropCoords.x1;
+        const cropH = finalCropCoords.y2 - finalCropCoords.y1;
+        if (cropW <= 0 || cropH <= 0) return;
+    
+        const c = document.createElement('canvas'); c.width = cropW; c.height = cropH;
+        const ctx = c.getContext('2d');
         try {
-            pCtx.drawImage(
-                video, 
-                finalCropCoords.x1, finalCropCoords.y1, cropWidth, cropHeight, 
-                0, 0, cropWidth, cropHeight    
-            );
-            
-            plateImg.src = plateCanvas.toDataURL('image/jpeg');
-            plateImg.style.display = 'block';
-            // *** DEBUG LOG 3 (更新) ***
-            console.log("Successfully drew image to canvas and updated preview.");
-
+          ctx.drawImage(videoEl, finalCropCoords.x1, finalCropCoords.y1, cropW, cropH, 0, 0, cropW, cropH);
+          plateImageInMemory = new Image();
+          plateImageInMemory.src = c.toDataURL('image/jpeg');
+    
+          plateImg.src = plateImageInMemory.src;
+          plateImg.style.display = 'block';
+          // 顯示車牌預覽列
+          const plateBar = container.querySelector('.plate-preview');
+          if (plateBar && plateBar.style) plateBar.style.display = 'flex';
+    
+          plateImageInMemory.onload = drawOverlayContent;
+          plateImageInMemory.onload = () => {
+            drawOverlayContent();
+            restorePlatePreviewIfAny(); // ✅ 保險：裁切完成後立即顯示車牌列
+          };
         } catch (e) {
-            // *** DEBUG LOG 4 (更新) ***
-            console.error("Error during pCtx.drawImage:", e);
+          console.error('裁切失敗：', e);
         }
-    }
+      }
 
-
-    // 3. 合成大圖 (大圖 + 角落車牌) 
-    function generateReportImage(type) {
-        if (!plateImg.src || plateImg.style.display === 'none') {
-            alert('請先擷取車牌特寫！');
-            return;
+      function restorePlatePreviewIfAny() {
+        const plateBar = container.querySelector('.plate-preview');
+        if (!plateBar) return;
+        if (plateImageInMemory) {
+          // 若記憶體已有車牌影像，顯示預覽列與小圖
+          plateImg.src = plateImageInMemory.src;
+          plateImg.style.display = 'block';
+          plateBar.style.display = 'flex';
+          // 重新繪製 overlay（確保位置/縮放立即生效）
+          drawOverlayContent?.();
+        } else {
+          // 沒有車牌影像時保持隱藏（或你也可選擇顯示但無小圖）
+          plateImg.style.display = 'none';
+          plateBar.style.display = 'none';
         }
-        if (!video.src) return;
-        video.pause();
+      }
 
-        finalCanvas.width = video.videoWidth;
-        finalCanvas.height = video.videoHeight;
-        const ctx = finalCanvas.getContext('2d');
-        ctx.drawImage(video, 0, 0, finalCanvas.width, finalCanvas.height);
-
-        const position = platePositionSelect.value;
-        const scalePercent = plateScaleInput.value / 100; 
-        const margin = 20;
-        
-        const tempPlateImg = new Image();
-        tempPlateImg.src = plateImg.src;
-
-        tempPlateImg.onload = () => {
-            const originalPlateW = tempPlateImg.width;
-            const originalPlateH = tempPlateImg.height;
-
-            let displayW = finalCanvas.width * scalePercent;
-            let displayH = (displayW / originalPlateW) * originalPlateH;
-            
-            let posX, posY;
-
-            switch (position) {
-                case 'topRight':
-                    posX = finalCanvas.width - displayW - margin;
-                    posY = margin;
-                    break;
-                case 'topLeft':
-                    posX = margin;
-                    posY = margin;
-                    break;
-                case 'bottomLeft':
-                    posX = margin;
-                    posY = finalCanvas.height - displayH - margin;
-                    break;
-                case 'bottomRight':
-                default:
-                    posX = finalCanvas.width - displayW - margin;
-                    posY = finalCanvas.height - displayH - margin;
-                    break;
-            }
-
-            ctx.strokeStyle = "red";
-            ctx.lineWidth = 5;
-            ctx.strokeRect(posX, posY, displayW, displayH);
-            ctx.drawImage(tempPlateImg, posX, posY, displayW, displayH);
-
-            if (type === 'before') {
-                document.getElementById('imgBefore').src = finalCanvas.toDataURL('image/jpeg');
-            } else {
-                document.getElementById('imgAfter').src = finalCanvas.toDataURL('image/jpeg');
-            }
+      // ===== Overlay 重繪：紅框、車牌貼上 =====
+      function drawOverlayContent() {
+        const ctx = drawingOverlay.getContext('2d');
+        ctx.clearRect(0, 0, drawingOverlay.width, drawingOverlay.height);
+    
+        if (drawnShapes.length > 0) {
+          const displayW = staticImage.clientWidth;
+          const displayH = staticImage.clientHeight;
+          drawAllUserShapes(ctx, displayW, displayH, true);
+        }
+        if (plateImageInMemory) {
+          drawPlateOnCanvas(ctx, drawingOverlay.width, drawingOverlay.height, true);
+        }
+      }
+    
+      // ===== 車牌貼上（位置＋縮放） =====
+      function drawPlateOnCanvas(ctx, targetW, targetH, isOverlay = false) {
+        if (!plateImageInMemory) return;
+        const position = platePositionSelect.value || 'bottomRight';
+        const scalePercent = (Number(plateScaleInput.value) || 30) / 100;
+        const margin = 16;
+    
+        const ow = plateImageInMemory.width, oh = plateImageInMemory.height;
+        let w = targetW * scalePercent;
+        let h = (w / ow) * oh;
+    
+        let x, y;
+        switch (position) {
+          case 'topRight':    x = targetW - w - margin; y = margin; break;
+          case 'topLeft':     x = margin; y = margin; break;
+          case 'bottomLeft':  x = margin; y = targetH - h - margin; break;
+          case 'bottomRight':
+          default:            x = targetW - w - margin; y = targetH - h - margin; break;
+        }
+    
+        ctx.strokeStyle = '#e53935';
+        ctx.lineWidth = isOverlay ? 3 : 4;
+        ctx.strokeRect(x, y, w, h);
+        ctx.drawImage(plateImageInMemory, x, y, w, h);
+      }
+    
+      // ===== 紅框模式切換 + 紅框選項列 =====
+      function toggleDrawingMode() {
+        isDrawingMode = !isDrawingMode;
+        if (isDrawingMode) {
+          drawingModeBtn.textContent = '關閉自訂紅框';
+          buildDrawingOptionsIfNeeded();
+          const opts = container.querySelector('#drawingOptionsContainer');
+          if (opts && opts.style) opts.style.display = 'flex';
+          selectionBox.style.display = 'none';
+          setupDrawingOverlay();
+          drawOverlayContent();
+        } else {
+          drawingModeBtn.textContent = '啟用/關閉自訂紅框';
+          const opts = container.querySelector('#drawingOptionsContainer');
+          if (opts && opts.style) opts.style.display = 'none';
+          // 是否清空由你決定；維持原行為：關閉時清空
+          // 如需保留，註解下一行即可：
+          clearAllDrawings();
+          drawOverlayContent();
+        }
+      }
+    
+      function buildDrawingOptionsIfNeeded() {
+        if (container.querySelector('#drawingOptionsContainer')) return;
+        const bar = document.createElement('div');
+        bar.id = 'drawingOptionsContainer';
+        Object.assign(bar.style, {
+          display: 'none', background:'var(--panel)', padding:'8px', borderRadius:'6px',
+          border: '1px solid var(--border)', marginTop:'6px', gap:'10px', alignItems:'center'
+        });
+        bar.style.flexWrap = 'wrap';
+    
+        // 形狀
+        const shapeGroup = document.createElement('div');
+        shapeGroup.className = 'row';
+        const shapeLabel = document.createElement('label'); shapeLabel.textContent = '形狀'; shapeLabel.style.color = 'var(--fg)';
+        drawingShapeSelect = document.createElement('select');
+        drawingShapeSelect.id = 'drawingShape';
+        drawingShapeSelect.innerHTML = `<option value="rectangle">方框</option><option value="circle">圓框</option>`;
+        shapeGroup.append(shapeLabel, drawingShapeSelect);
+    
+        // 線寬
+        const thickGroup = document.createElement('div'); thickGroup.className = 'row';
+        const thickLabel = document.createElement('label'); thickLabel.textContent = '粗細(px)'; thickLabel.style.color = 'var(--fg)';
+        lineThicknessInput = document.createElement('input');
+        lineThicknessInput.type = 'range'; lineThicknessInput.min = '1'; lineThicknessInput.max = '20'; lineThicknessInput.value = '5';
+        const thickValue = document.createElement('span'); thickValue.id = 'thicknessValue'; thickValue.textContent = '5px'; thickValue.style.color = 'var(--fg)';
+        lineThicknessInput.addEventListener('input', () => { thickValue.textContent = `${lineThicknessInput.value}px`; });
+        thickGroup.append(thickLabel, lineThicknessInput, thickValue);
+    
+        // 傾斜（旋轉）
+        const rotGroup = document.createElement('div'); rotGroup.className = 'row';
+        const rotLabel = document.createElement('label'); rotLabel.textContent = '傾斜'; rotLabel.style.color = 'var(--fg)';
+        rotationCheckbox = document.createElement('input'); rotationCheckbox.type = 'checkbox'; rotationCheckbox.id = 'enableRotation';
+        rotGroup.append(rotLabel, rotationCheckbox);
+    
+        bar.append(shapeGroup, thickGroup, rotGroup);
+        // 插入位置：車牌列之後、主畫布之前
+        const left = container.querySelector('.editor-left');
+        left.insertBefore(bar, left.querySelector('.editor-stage'));
+      }
+    
+      // ===== 使用者紅框互動 =====
+      function startUserDrawing(e) {
+        if (!isPrimaryPointer(e)) return;
+        e.preventDefault();
+        isDrawing = true;
+        const rect = drawingOverlay.getBoundingClientRect();
+        startX = e.clientX - rect.left;
+        startY = e.clientY - rect.top;
+        currentShape = {
+          type: drawingShapeSelect?.value || 'rectangle',
+          thickness: Number(lineThicknessInput?.value || 5),
+          startX, startY, endX: startX, endY: startY,
+          angle: 0, width: 0, height: 0
         };
-    }
-
-    // 4. 下載功能
-    function downloadImg(elementId, filename) {
-        const link = document.createElement('a');
-        link.download = filename;
-        link.href = document.getElementById(elementId).src;
-        link.click();
-    }
-  
-    function openGoogleMap() {
-        // 獲取輸入框中的地址
-        const address = document.getElementById('address').value;
-        let url = 'https://www.google.com/maps/place/';
-        // 如果使用者已經輸入了地址，就直接搜尋該地址
-        if (address) {
-            url = `https://www.google.com/maps/place/${encodeURIComponent(address)}`;
+      }
+      function drawUserMoving(e) {
+        if (!isDrawing || !currentShape) return;
+        e.preventDefault();
+        const rect = drawingOverlay.getBoundingClientRect();
+        currentX = e.clientX - rect.left;
+        currentY = e.clientY - rect.top;
+        const dx = currentX - startX;
+        const dy = currentY - startY;
+        if (rotationCheckbox?.checked) {
+          currentShape.width  = Math.sqrt(dx*dx + dy*dy);
+          currentShape.height = currentShape.width * 0.5;
+          currentShape.angle  = Math.atan2(dy, dx);
+        } else {
+          currentShape.width  = Math.abs(dx);
+          currentShape.height = Math.abs(dy);
+          currentShape.angle  = 0;
         }
-        window.open(url, '_blank');
-    }
-</script>
+        currentShape.endX = currentX;
+        currentShape.endY = currentY;
+        drawOverlayContent();
+        const ctx = drawingOverlay.getContext('2d');
+        drawShape(ctx, currentShape, 1, 1);
+      }
+      function stopUserDrawing() {
+        if (!isDrawing || !currentShape) return;
+        isDrawing = false;
+        if (currentShape.width > dragThreshold && currentShape.height > dragThreshold) {
+          drawnShapes.push(currentShape);
+        }
+        currentShape = null;
+        drawOverlayContent();
+      }
+      function clearAllDrawings() { drawnShapes = []; drawOverlayContent(); }
+    
+      // ===== 紅框繪製 =====
+      function drawShape(ctx, shape, scaleX, scaleY) {
+        ctx.strokeStyle = '#e53935';
+        ctx.lineWidth = shape.thickness * scaleX;
+        ctx.save();
+        const cx = (shape.startX + (shape.endX - shape.startX)/2) * scaleX;
+        const cy = (shape.startY + (shape.endY - shape.startY)/2) * scaleY;
+        ctx.translate(cx, cy);
+        ctx.rotate(shape.angle);
+        if (shape.type === 'rectangle') {
+          const w = shape.width  * scaleX;
+          const h = shape.height * scaleY;
+          ctx.strokeRect(-w/2, -h/2, w, h);
+        } else if (shape.type === 'circle') {
+          const rx = (shape.width/2)  * scaleX;
+          const ry = (shape.height/2) * scaleY;
+          ctx.scale(1, ry / rx);
+          ctx.beginPath(); ctx.arc(0, 0, rx, 0, Math.PI*2); ctx.stroke();
+        }
+        ctx.restore();
+      }
+      function drawAllUserShapes(ctx, finalW, finalH, isOverlay = false) {
+        if (drawnShapes.length === 0) return;
+        let scaleX = 1, scaleY = 1;
+        if (!isOverlay) {
+          const displayW = staticImage.clientWidth;
+          const displayH = staticImage.clientHeight;
+          scaleX = finalW / displayW;
+          scaleY = finalH / displayH;
+        }
+        drawnShapes.forEach(s => drawShape(ctx, s, scaleX, scaleY));
+      }
+    
+      // ===== 生成最終截圖並加入列表（持久化） =====
+      function generateReportImage() {
+        if (!plateImageInMemory) { alert('請先擷取車牌特寫！'); return; }
+        if (!videoEl?.src) return;
+        videoEl.pause();
+    
+        finalCanvas.width  = videoEl.videoWidth;
+        finalCanvas.height = videoEl.videoHeight;
+        const ctx = finalCanvas.getContext('2d');
+        ctx.drawImage(videoEl, 0, 0, finalCanvas.width, finalCanvas.height);
+    
+        drawAllUserShapes(ctx, finalCanvas.width, finalCanvas.height, false);
+        drawPlateOnCanvas(ctx, finalCanvas.width, finalCanvas.height, false);
+    
+        const url = finalCanvas.toDataURL('image/jpeg');
+        pushGeneratedItem(url);
+      }
+    
+      function pushGeneratedItem(url) {
+        const id = `gen_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+        generatedItems.push({ id, url, ts: Date.now() });
+        renderGeneratedCard({ id, url, ts: Date.now() });
+      }
+    
+      function renderGeneratedCard(item) {
+        const { id, url, ts } = item;
+        const card = document.createElement('div'); card.className = 'generated-image-card';
+        const inner = document.createElement('div'); inner.className = 'inner';
+    
+        const header = document.createElement('div'); header.className = 'header';
+        const info = document.createElement('span'); info.textContent = `產生時間: ${new Date(ts).toLocaleString()}`;
+    
+        const btnRow = document.createElement('div'); btnRow.className = 'btn-row';
+        const btnRemove = document.createElement('button'); btnRemove.textContent = '移除'; btnRemove.className = 'remove-btn';
+        const btnDownload = document.createElement('button'); btnDownload.textContent = '下載'; btnDownload.className = 'download-btn';
+    
+        const img = document.createElement('img'); img.src = url; img.id = id;
+        btnDownload.onclick = () => downloadImg(id, `report_${new Date(ts).toISOString().slice(0,19).replace(/[-:T]/g,'')}.jpg`);
+        btnRemove.onclick = () => removeGeneratedItem(id);
+        img.addEventListener('click', () => showPreview(url));
+    
+        header.append(info, btnRow);
+        btnRow.append(btnRemove, btnDownload);
+        inner.append(header, img);
+        card.append(inner);
+        generatedImagesArea.appendChild(card);
+      }
+    
+      function rebuildGeneratedList() {
+        generatedImagesArea.innerHTML = '';
+        generatedItems.forEach(renderGeneratedCard);
+      }
+    
+      function removeGeneratedItem(id) {
+        const idx = generatedItems.findIndex(x => x.id === id);
+        if (idx >= 0) generatedItems.splice(idx, 1);
+        const el = document.getElementById(id);
+        if (el) {
+          const card = el.closest('.generated-image-card');
+          card?.remove();
+        }
+      }
+    
+      function downloadImg(elementId, filename) {
+        const el = document.getElementById(elementId);
+        if (!el?.src) return;
+        const a = document.createElement('a'); a.download = filename; a.href = el.src; a.click();
+      }
+    
+      // 浮動大圖預覽
+      let previewLayer = null;
+      function showPreview(url) {
+        if (!previewLayer) {
+          previewLayer = document.createElement('div');
+          Object.assign(previewLayer.style, {
+            position:'fixed', top:'50%', left:'50%', transform:'translate(-50%,-50%)',
+            maxWidth:'90vw', maxHeight:'90vh', boxShadow:'0 5px 15px rgba(0,0,0,.3)',
+            border:'1px solid var(--border)', zIndex:'9999', display:'none', background: '#0e0f12',
+            padding:'8px', borderRadius:'8px'
+          });
+          const img = document.createElement('img'); img.style.maxWidth='100%'; img.style.maxHeight='80vh'; img.style.borderRadius='4px';
+          previewLayer.appendChild(img);
+          document.body.appendChild(previewLayer);
+          previewLayer.addEventListener('click', hidePreview);
+        }
+        const img = previewLayer.querySelector('img'); img.src = url;
+        previewLayer.style.display = 'block';
+      }
+      function hidePreview() { if (previewLayer) previewLayer.style.display = 'none'; }
+    
+      // 主指標判斷（滑鼠左鍵／第一根手指）
+      function isPrimaryPointer(e) { return e.isPrimary !== false; }
+    
+      return { init };
+    })();
 
+    // 在所有函式宣告之後加上這段「啟動即更新」
+    requestAnimationFrame(() => {
+      // 第 1 帧：DOM 已排版完成，rail 有正確寬度
+      updateSelectionBar();
+    });
+    // 再保險一帧（某些字型/面板異動會影響初始排版）
+    requestAnimationFrame(() => updateSelectionBar());
+  </script>
 </body>
 </html>
