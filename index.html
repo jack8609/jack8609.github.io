@@ -12,60 +12,82 @@
   <link rel="icon" href="data:," />
 
   <style>
-    /* 你的 root 設定（已照你提供內容） */
+    /* =========================================================
+       Base & Theme Variables
+       ========================================================= */
     :root {
-      /* 雙滑桿區 */
-      --rail-pad: 14px;              /* 軌道左右內距：JS 也會讀取 */
-      --track-height: 8px;           /* 軌道高度 */
-      --thumb-size: 18px;            /* 把手大小 */
-      --spacing-v: 18px;             /* 上下滑桿垂直間距（可調，例如 18/22/28/30px） */
-      --track-bg: #16181d;           /* 軌道底色（深色主題）#2a2f3a */
-      --select-bg: #1e6fd6;          /* 選取色帶顏色 */
-      --accent-color: #35a0ff;       /* 把手顏色 */
-
-      /* 主題色 */
+      /* 雙滑桿尺寸 */
+      --rail-pad: 14px;
+      --track-height: 8px;
+      --thumb-size: 18px;
+      --spacing-v: 18px;
+    
+      /* 深色主題（預設） */
       --bg: #0e0f12;
       --fg: #e6e6e6;
       --panel: #16181d;
       --border: #262a33;
+    
+      /* 雙滑桿顏色（深色） */
+      --track-bg: #16181d;
+      --select-bg: #1e6fd6;
+      --accent-color: #35a0ff;
+    
+      /* 元件色彩 */
+      --log-bg: #0a0a0a;
+      --log-fg: #86ff91;
+      --chip-bg: #0f2338;
+      --chip-fg: #bfe3ff;
+      --chip-border: #1f3d5e;
+      --link-color: #8fbfff;
+      --btn-border: var(--border);
+      --btn-bg: var(--panel);
+      --btn-fg: var(--fg);
+      --btn-primary-bg: #0c3a60;
+      --btn-primary-fg: #ffffff;
+      --btn-primary-border: var(--accent-color);
+      --btn-hover-bg: #222833;
+    
+      /* 次要文字 */
+      --muted-fg: #9aa5b1;
+    
+      /* 可及性焦點色 */
+      --focus-ring: #1e6fd6;
+      --focus-ring-light: #2563eb;
+      --focus-shadow-alpha: 0.22;
+    
+      /* 內容最大寬（可依需求調整） */
+      --content-max: 960px;
     }
+    html { color-scheme: dark light; }
 
-    /* === Light 主題變數（新增）=== */
-    @media (prefers-color-scheme: light) {
-      /* 若使用者從未選過，且系統偏好 light，可作為初始參考（JS 會再覆蓋） */
-    }
-    
+    /* =========================================================
+       Light Theme Overrides
+       ========================================================= */
     html[data-theme="light"] {
-      /* 依你深色版變數對應調成淺色系 */
-      --bg: #f6f7f9;          /* 背景 */
-      --fg: #111827;          /* 前景文字 */
-      --panel: #ffffff;       /* 面板底 */
-      --border: #d1d5db;      /* 邊框 */
-    
-      /* 雙滑桿與按鈕可視需求微調 */
-      --track-bg: #ffffff;    /* 軌道底色 */
-      --select-bg: #2563eb;   /* 選取色帶 */
-      --accent-color: #2563eb;/* 把手/強調色 */
+      --bg: #f6f7f9;
+      --fg: #111827;
+      --panel: #ffffff;
+      --border: #d1d5db;
+      --track-bg: #ffffff;
+      --select-bg: #2563eb;
+      --accent-color: #2563eb;
+      --log-bg: #f8fafc;
+      --log-fg: #0f766e;
+      --chip-bg: #e6f0ff;
+      --chip-fg: #0b3b77;
+      --chip-border: #bfd3ff;
+      --link-color: #2563eb;
+      --btn-primary-bg: #1d4ed8;
+      --btn-primary-border: #1d4ed8;
+      --btn-hover-bg: #eef2f7;
+      --muted-fg: #6b7280;
+      --focus-ring: var(--focus-ring-light);
     }
     
-    /* 右上角主題開關的基本樣式（新增） */
-    .theme-toggle {
-      position: absolute;
-      top: 12px;
-      right: 12px;
-      z-index: 9999;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      background: var(--panel);
-      border: 1px solid var(--border);
-      color: var(--fg);
-      border-radius: 999px;
-      padding: 6px 10px;
-      box-shadow: 0 2px 8px rgba(0,0,0,.08);
-      user-select: none;
-    }
-    
+    /* =========================================================
+       Theme Toggle
+       ========================================================= */
     .theme-toggle input[type="checkbox"] {
       appearance: none;
       width: 42px; height: 24px;
@@ -87,353 +109,350 @@
       box-shadow: 0 1px 3px rgba(0,0,0,.2);
       transition: transform .2s ease;
     }
-    .theme-toggle input[type="checkbox"]:checked {
-      background: var(--accent-color);
-    }
-    .theme-toggle input[type="checkbox"]:checked::after {
-      transform: translateX(18px);
-    }
-    .theme-toggle .label {
-      font-size: 13px;
-      color: inherit;
+    .theme-toggle input[type="checkbox"]:checked { background: var(--accent-color); }
+    .theme-toggle input[type="checkbox"]:checked::after { transform: translateX(18px); }
+    .theme-toggle .label { font-size: 13px; color: inherit; }
+    @supports (-webkit-touch-callout: none) {
+      .theme-toggle { margin-top: calc(env(safe-area-inset-top) + 8px); }
     }
 
-    /* ===== Light 主題修補：覆寫違規編輯器的顏色與對比 ===== */
-    html[data-theme="light"] .violation-editor {
+    /* 父容器：建立定位上下文，並預留右側空間以免 h1 碰到開關 */
+    .page-title-bar {
+      position: relative;         /* 讓內部 absolute 以此為座標 */
+      padding-right: 120px;       /* 預留空間（依你的開關寬度調整） */
+      /* 可選：上下留點餘裕 */
+      padding-top: 8px;
+      padding-bottom: 8px;
+    }
+    
+    /* 標題本身可在窄螢幕換行，避免碰撞 */
+    .page-title-bar h1 {
+      margin: 0;
+      font-weight: 800;
+      color: var(--fg);
+      white-space: normal;
+      overflow-wrap: anywhere;    /* 換行以避免碰到右側開關 */
+    }
+    
+    /* 開關固定在右上角但跟著捲動（因為相對 parent） */
+    .page-title-bar .theme-toggle {
+      position: absolute;
+      top: 50%;
+      right: 0px;
+      transform: translateY(-70%);  /* 垂直置中；若要貼頂改成 top: 0 即可 */
+      z-index: 10;
+    
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      color: var(--fg);
+      border-radius: 999px;
+      padding: 6px 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.08);
+    }
+    
+    /* 窄螢幕時縮小右側預留空間與字級，降低碰撞機率 */
+    @media (max-width: 420px) {
+      .page-title-bar { padding-right: 96px; }
+      .page-title-bar h1 { font-size: clamp(18px, 4vw, 22px); }
+      .page-title-bar .theme-toggle { right: 0px; }
+    }
+    
+    /* iOS 安全區：避免貼到瀏海或側邊曲面 */
+    @supports (-webkit-touch-callout: none) {
+      .page-title-bar {
+        padding-right: calc(96px + env(safe-area-inset-right));
+        padding-top: calc(8px + env(safe-area-inset-top));
+      }
+    }
+    /* =========================================================
+       Violation Editor（整合）
+       ========================================================= */
+    .violation-editor * { box-sizing: border-box; }
+    .violation-editor {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans TC", Arial, "PingFang TC", "Microsoft JhengHei", sans-serif;
       color: var(--fg);
       background: var(--panel);
+      line-height: 1.5;
+      width: min(100%, var(--content-max));
+      margin-inline: auto;
+      max-width: 100%;
+      overflow-x: hidden;
+    }
+    .violation-editor .toolbar {
+      display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center;
+      border: 1px solid var(--border); padding: 12px; border-radius: 6px; background: var(--panel);
+      max-width: 100%; overflow: hidden;
+    }
+    .violation-editor .group { display: inline-flex; align-items: center; gap: 8px; flex: 0 1 auto; min-width: 0; }
+    @media (max-width: 640px) { .violation-editor .group.full { flex-basis: 100%; } }
+    .violation-editor label { font-size: 14px; color: var(--muted-fg); white-space: nowrap; flex: 0 0 auto; }
+    .violation-editor input[type="text"],
+    .violation-editor input[type="date"],
+    .violation-editor select,
+    .violation-editor textarea,
+    .violation-editor button {
+      border: 1px solid var(--border);
+      padding: 6px 8px; font-size: 14px; border-radius: 6px;
+      background: var(--panel); color: var(--fg); outline: none;
+      min-width: 0; max-width: 100%; box-sizing: border-box;
+    }
+    .violation-editor :is(input, select, textarea, button):focus-visible {
+      border-color: var(--focus-ring);
+      box-shadow: 0 0 0 3px rgba(30, 111, 214, var(--focus-shadow-alpha));
     }
     
-    /* 工具列／預覽面板：使用淺色面板與邊框 */
-    html[data-theme="light"] .violation-editor .toolbar,
-    html[data-theme="light"] .violation-editor .preview {
-      background: var(--panel);
-      border-color: var(--border);
+    /* 車牌輸入框 */
+    .violation-editor #ve-plate1, .violation-editor #ve-plate2 { width: 80px; }
+    .violation-editor .plate-boxes { display: inline-flex; gap: 8px; align-items: center; min-width: 0; }
+    .violation-editor .dash { color: var(--muted-fg); user-select: none; }
+    
+    /* 時間下拉 */
+    .violation-editor .time-selects { display: inline-flex; gap: 8px; align-items: center; min-width: 0; }
+    .violation-editor .time-selects select { min-width: 80px; }
+    
+    /* 預覽／輸出 */
+    .violation-editor .preview {
+      margin-top: 14px; border: 1px solid var(--border); padding: 12px;
+      background: var(--panel); border-radius: 6px; max-width: 100%; overflow: hidden;
+    }
+    .violation-editor textarea#ve-output {
+      width: 100%; height: 140px; font-size: 18px; font-weight: 700;
+      border: none; background: transparent; resize: vertical; line-height: 1.7; box-sizing: border-box;
     }
     
-    /* label：在 Light 模式下提高對比，不再使用偏淡灰 */
-    html[data-theme="light"] .violation-editor label {
-      color: var(--fg); /* 或改為 #374151（更深的灰） */
-    }
+    /* 控制列與按鈕 */
+    .violation-editor .control-row { display: flex; align-items: center; gap: 12px; margin-top: 8px; flex-wrap: wrap; min-width: 0; }
+    .violation-editor .btn { background: var(--panel); color: var(--fg); border-color: var(--border); cursor: pointer; }
+    .violation-editor .btn:hover { background: var(--btn-hover-bg); border-color: var(--btn-primary-border); }
     
-    /* 所有表單與按鈕：改用淺色背景、深色文字 */
+    /* Light 覆寫（提高對比） */
+    html[data-theme="light"] .violation-editor label { color: var(--fg); }
     html[data-theme="light"] .violation-editor input[type="text"],
     html[data-theme="light"] .violation-editor input[type="date"],
     html[data-theme="light"] .violation-editor select,
     html[data-theme="light"] .violation-editor textarea,
     html[data-theme="light"] .violation-editor button {
-      background: #ffffff;          /* 由原本 #1d2129 改為白色 */
-      color: var(--fg);
-      border-color: var(--border);
+      background: #ffffff; color: var(--fg); border-color: var(--border);
     }
+    html[data-theme="light"] .violation-editor .btn:hover { background: var(--btn-hover-bg); border-color: #bfd3ff; }
     
-    /* 文本框的邊界與焦點樣式 */
-    html[data-theme="light"] .violation-editor input:focus,
-    html[data-theme="light"] .violation-editor select:focus,
-    html[data-theme="light"] .violation-editor textarea:focus,
-    html[data-theme="light"] .violation-editor button:focus {
-      border-color: #2563eb;       /* 明亮模式可用更清晰的焦點色 */
-      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+    /* Select（長字串與 iOS 外觀修正） */
+    .violation-editor select {
+      -webkit-appearance: none; appearance: none;
+      background: var(--panel); color: var(--fg); border: 1px solid var(--border);
+      width: 100%; max-width: 100%; box-sizing: border-box;
+      white-space: normal; text-overflow: ellipsis; overflow: hidden;
     }
-    
-    /* 複製按鈕 hover：淺色背景下加一點陰影與顏色變化 */
-    html[data-theme="light"] .violation-editor .btn:hover {
-      background: #eef2f7;
-      border-color: #bfd3ff;
-    }
-    
-    /* 小排版：plate 分隔符顏色在 light 下改深一點 */
-    html[data-theme="light"] .violation-editor .dash {
-      color: #6b7280; /* 中灰，比 #9aa5b1 更清楚 */
-    }
+    .violation-editor option { background: var(--panel); color: var(--fg); }
+    html[data-theme="light"] .violation-editor select { background: #fff; color: var(--fg); border-color: var(--border); }
+    html[data-theme="light"] .violation-editor option { background: #fff; color: var(--fg); }
 
-    .group-title {
-      margin: .5rem 0 .25rem;
-      font-weight: 600;
-      color: #c9d1d9; /* ← 這在 light 會偏淡 */
-    }
-    
-    /* ✅ 新增：明亮主題下覆寫為深字色（放在主題 CSS 之後） */
-    html[data-theme="light"] .group-title {
-      color: var(--fg);           /* 用主題前景色（#111827） */
-      /* 或如果你想更柔和一點：color: #374151; */
-    }
-
+    /* =========================================================
+       Global Base & Components
+       ========================================================= */
     * { box-sizing: border-box; }
-    body { background: var(--bg); color: var(--fg); font-family: system-ui, -apple-system, "Segoe UI", Roboto; margin: 2rem; }
+    body {
+      background: var(--bg);
+      color: var(--fg);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto;
+      margin: 2rem;
+    }
+    @media (max-width: 480px) { body { margin: 1rem; } }
     h1 { margin-top: 0; }
-    .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem;
+    }
     .controls { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
-    .log { white-space: pre-wrap; background:#0a0a0a; color:#86ff91; padding:1rem; min-height:10rem; border-radius: 8px; font-size: 0.92rem; }
-    button { padding: .55rem .85rem; border-radius: 8px; border: 1px solid #2a2f3a; background: var(--panel); color: var(--fg); cursor: pointer; }
-    button:disabled { opacity: .5; cursor: not-allowed; }
-    button.primary { border-color: var(--accent-color); color: #fff; background: #0c3a60; }
+    .log {
+      white-space: pre-wrap; background: var(--log-bg); color: var(--log-fg);
+      padding: 1rem; min-height: 10rem; border-radius: 8px; font-size: 0.92rem;
+    }
+    button {
+      padding: .55rem .85rem; border-radius: 8px;
+      border: 1px solid var(--btn-border);
+      background: var(--btn-bg); color: var(--btn-fg);
+      cursor: pointer;
+    }
+    button:disabled { opacity: .6; cursor: not-allowed; }
+    button.primary { border-color: var(--btn-primary-border); color: var(--btn-primary-fg); background: var(--btn-primary-bg); }
     .status { margin:.5rem 0; }
     .time { font-variant-numeric: tabular-nums; }
-    .chip { background: #0f2338; color: #bfe3ff; border: 1px solid #1f3d5e; padding: .2rem .5rem; border-radius: 6px; }
-    a { color: #8fbfff; }
+    .chip {
+      background: var(--chip-bg); color: var(--chip-fg);
+      border: 1px solid var(--chip-border); padding: .2rem .5rem; border-radius: 6px;
+    }
+    a { color: var(--link-color); }
     .hint { background: var(--panel); color: var(--fg); font-size: .9rem; }
     .col { display: grid; grid-template-columns: 1fr; gap: 1rem; }
     @media (min-width: 980px) { .col { grid-template-columns: 1.2fr 1fr; } }
+    /* 標題顏色 */
     .group-title { margin: .5rem 0 .25rem; font-weight: 600; color: #c9d1d9; }
+    html[data-theme="light"] .group-title { color: var(--fg); }
 
-    /* 讓影片與滑桿左右「切齊」：放進同一個容器並統一 padding */
-    .media-area {
-      padding: 0 var(--rail-pad);
-    }
+    /* =========================================================
+       Media Area & Stacked Slider
+       ========================================================= */
+    .media-area { padding: 0 var(--rail-pad); }
     .media-area video {
-      width: 100%;
-      max-width: 100%;
-      display: block;
-      background: #000;
-      border-radius: 8px;
+      width: 100%; max-width: 100%; display: block; background: #000; border-radius: 8px;
     }
 
-    /* 上下雙滑桿（你的範例邏輯，調整為與 .media-area 對齊） */
     .stacked-slider { position: relative; margin-top: .75rem; }
     .stacked-slider .rail {
       position: relative;
-      height: calc(var(--spacing-v) * 2 + var(--track-height)); /* 容器高度由間距決定 */
-      /* 取消自身 padding，改由外層 .media-area 控制左右間距 */
+      height: calc(var(--spacing-v) * 2 + var(--track-height));
       padding: 0;
     }
-    /* 上/下兩條軌道：與 .media-area 內緣對齊 */
     .stacked-slider .track {
-      position: absolute;
-      left: 0; right: 0;
-      height: var(--track-height);
-      background: var(--track-bg);
-      border-radius: 6px;
+      position: absolute; left: 0; right: 0;
+      height: var(--track-height); background: var(--track-bg); border-radius: 6px;
     }
     .stacked-slider .track.top { top: 0; }
     .stacked-slider .track.bottom { top: calc(var(--spacing-v) + var(--track-height)); }
-
-    /* 中間選取色帶（Start→End） */
     .stacked-slider .selection {
       position: absolute;
       top: calc(var(--spacing-v) / 2 + var(--track-height) / 2);
-      height: var(--track-height);
-      background: var(--select-bg);
-      border-radius: 6px;
-      /* left/width 由 JS 動態設定（已對齊 .rail 的內緣） */
+      height: var(--track-height); background: var(--select-bg);
+      border-radius: 6px; pointer-events: none;
     }
-
-    /* 上/下兩個 range（增大點擊熱區） */
     .stacked-slider input[type="range"] {
-      position: absolute;
-      left: 0; right: 0; width: 100%;
-      margin: 0; background: transparent;
-      -webkit-appearance: none; appearance: none;
-      cursor: pointer;
-      height: var(--spacing-v);
+      position: absolute; left: 0; right: 0; width: 100%;
+      margin: 0; background: transparent; -webkit-appearance: none; appearance: none;
+      cursor: pointer; height: var(--spacing-v);
     }
     .stacked-slider #startRange { top: 0; }
     .stacked-slider #endRange   { top: var(--spacing-v); }
-
-    /* 隱藏原生軌道（只顯示 thumb） */
     .stacked-slider input[type="range"]::-webkit-slider-runnable-track { height: var(--track-height); background: transparent; }
     .stacked-slider input[type="range"]::-moz-range-track { height: var(--track-height); background: transparent; }
-
-    /* thumb 樣式（置中對齊） */
     .stacked-slider input[type="range"]::-webkit-slider-thumb {
       -webkit-appearance: none; appearance: none;
       width: var(--thumb-size); height: var(--thumb-size);
-      border-radius: 50%;
-      background: var(--accent-color);
-      border: 2px solid #fff;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+      border-radius: 50%; background: var(--accent-color);
+      border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.2);
       margin-top: calc(var(--track-height) / 2 - var(--thumb-size) / 2);
     }
     .stacked-slider input[type="range"]::-moz-range-thumb {
       width: var(--thumb-size); height: var(--thumb-size);
-      border-radius: 50%;
-      background: var(--accent-color);
-      border: 2px solid #fff;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+      border-radius: 50%; background: var(--accent-color);
+      border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .stacked-slider input[type="range"]:focus-visible {
+      outline: none; box-shadow: 0 0 0 3px rgba(30, 111, 214, var(--focus-shadow-alpha));
     }
 
     /* Log 折疊控制 */
     .log-panel { display: none; }
     .log-panel.show { display: block; }
 
-    /* 截圖預覽面板（為未來編輯預留空間） */
+    /* =========================================================
+       Shot Preview & Generated Items
+       ========================================================= */
+    /* 主體不再強制修補直式白區（由 EditorLite 注入樣式已修正） */
     .shot-box { display: grid; grid-template-columns: 1fr; gap: .75rem; }
     .shot-preview {
       background: var(--panel); border: 1px solid var(--border);
-      min-height: 260px; display: flex; align-items: center; justify-content: center;
-      border-radius: 8px; overflow: auto;
+      min-height: 260px; /* 供桌面端，直式具體高度由 EditorLite 斷點接管 */
+      min-width: 100%;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 8px; overflow: auto; max-width: 100%;
     }
     .shot-preview img { max-width: 100%; height: auto; display: block; }
 
-    /* ===== 手機與小平板（≤ 840px）整體布局 ===== */
+    /* =========================================================
+       RWD（包含 iPhone 兩欄按鈕）
+       ========================================================= */
     @media (max-width: 840px) {
-      /* 左右欄改為單欄堆疊 */
-      #shotPreview .editor-grid {
-        grid-template-columns: 1fr;
-        gap: 12px;
-      }
-    
-      /* 工具列按鈕：允許換行、全寬（更好點擊） */
-      #shotPreview .tool-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-      }
+      #shotPreview .editor-grid { grid-template-columns: 1fr; gap: 12px; }
+      #shotPreview .tool-row { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
       #shotPreview .tool-row .btn {
-        flex: 1 1 calc(50% - 8px);       /* 兩欄 */
-        min-width: 140px;                 /* 避免太窄 */
+        flex: 1 1 calc(50% - 8px); /* 手機預設兩欄 */
+        min-width: 140px;
         text-align: center;
       }
-      /* 超窄螢幕改為單欄 */
-      @media (max-width: 420px) {
-        #shotPreview .tool-row .btn {
-          flex: 1 1 100%;
-          min-width: 0;
-        }
-      }
-    
-      /* 車牌預覽列：直向排列，不擠出畫面 */
       #shotPreview .plate-preview {
-        display: flex;
-        flex-direction: column;           /* 垂直堆疊 */
-        gap: 10px;
-        padding: 10px;
-        background: var(--panel);
-        border: 1px dashed var(--border);
-        border-radius: 8px;
+        display: flex; flex-direction: column; gap: 10px; padding: 10px;
+        background: var(--panel); border: 1px dashed var(--border); border-radius: 8px;
+        max-width: 100%; overflow-x: hidden;
       }
-      #shotPreview .plate-preview .row {
-        width: 100%;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-      /* 選單與 slider 佔滿寬度 */
-      #shotPreview .plate-preview select,
-      #shotPreview .plate-preview input[type="range"] {
-        flex: 1 1 auto;
-        min-width: 0;
-      }
-      /* 車牌小圖縮小、避免遮擋 */
-      #shotPreview .plate-preview img {
-        max-width: 180px;                 /* 手機適配 */
-        height: auto;
-      }
-    
-      /* 紅框編輯工具列（形狀/粗細/傾斜）：直向堆疊 */
+      #shotPreview .plate-preview .row { width: 100%; display: flex; align-items: center; gap: 8px; min-width: 0; }
+      #shotPreview .plate-preview select, #shotPreview .plate-preview input[type="range"] { flex: 1 1 auto; min-width: 0; }
+      #shotPreview .plate-preview img { max-width: 180px; height: auto; }
       #shotPreview #drawingOptionsContainer {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        background: var(--panel);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        padding: 10px;
+        display: flex; flex-direction: column; gap: 10px;
+        background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px;
+        max-width: 100%; overflow-x: hidden;
       }
-      #shotPreview #drawingOptionsContainer .row {
-        width: 100%;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-      #shotPreview #drawingOptionsContainer select,
-      #shotPreview #drawingOptionsContainer input[type="range"] {
-        flex: 1 1 auto;
-        min-width: 0;
-      }
-    
-      /* 主畫布容器：確保不超出寬度 */
-      #shotPreview .editor-stage {
-        padding: 8px;
-      }
-      #staticImageContainer {
-        width: 100%;
-        max-width: 100%;
-        overflow: hidden;                 /* 防止 overlay 溢出 */
-      }
-      #staticImage {
-        max-width: 100%;
-        height: auto;
-        display: block;
-      }
-      /* overlay 全寬貼齊、避免位移 */
-      #drawingOverlay {
-        left: 0 !important;
-        top: 0 !important;
-        width: 100% !important;
-        height: auto !important;
-        max-width: 100% !important;
-      }
-    
-      /* 右側已生成列表：在手機上內容完整呈現、可捲動 */
+      #shotPreview #drawingOptionsContainer .row { width: 100%; display: flex; align-items: center; gap: 8px; min-width: 0; }
+      #shotPreview #drawingOptionsContainer select, #shotPreview #drawingOptionsContainer input[type="range"] { flex: 1 1 auto; min-width: 0; }
+      #shotPreview .editor-stage { padding: 8px; }
+      #staticImageContainer { width: 100%; max-width: 100%; overflow: hidden; }
+      #staticImage { max-width: 100%; height: auto; display: block; }
+      #shotPreview .editor-stage #drawingOverlay { left: 0; top: 0; width: 100%; height: auto; max-width: 100%; }
       #shotPreview .editor-right {
-        max-height: none;                 /* 取消固定高度 */
-        padding: 10px;
-        background: var(--panel);
-        border: 1px solid var(--border);
-        border-radius: 8px;
+        max-height: 100%; padding: 10px; background: var(--panel);
+        border: 1px solid var(--border); border-radius: 8px; max-width: 100%; overflow-x: hidden;
       }
-      #shotPreview #generatedImagesArea {
-        overflow: visible;                /* 讓卡片本身管理捲動 */
-      }
-      #shotPreview .generated-image-card {
-        background: var(--panel);
-        border-color: var(--border);
-        border-radius: 8px;
-        padding: 8px;
-      }
-      #shotPreview .generated-image-card .inner {
-        background: var(--panel);
-        border-color: var(--border);
-        border-radius: 6px;
-        padding: 6px;
-      }
-      #shotPreview .generated-image-card .header {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        flex-wrap: wrap;                  /* 小螢幕換行 */
-      }
-      #shotPreview .generated-image-card .btn-row {
-        display: flex;
-        gap: 8px;
-        margin-left: auto;                /* 讓按鈕靠右 */
-      }
-      #shotPreview .generated-image-card img {
-        width: 100%;
-        height: auto;
-        display: block;
-      }
+      #shotPreview #generatedImagesArea { overflow: visible; }
+      #shotPreview .generated-image-card { background: var(--panel); border-color: var(--border); border-radius: 8px; padding: 8px; }
+      #shotPreview .generated-image-card .inner { background: var(--panel); border-color: var(--border); border-radius: 6px; padding: 6px; }
+      #shotPreview .generated-image-card .header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+      #shotPreview .generated-image-card .btn-row { display: flex; gap: 8px; margin-left: auto; }
+      #shotPreview .generated-image-card img { width: 100%; height: auto; display: block; }
     }
-    
-    /* ===== 超窄手機（≤ 360px）進一步緊湊 ===== */
-    @media (max-width: 360px) {
+
+    /* iPhone 常見寬度：維持兩欄；超窄退單欄 */
+    @media (max-width: 420px) {
+      #shotPreview .tool-row { display: flex; flex-wrap: wrap; gap: 8px; overflow: hidden; }
       #shotPreview .tool-row .btn {
-        padding: 8px 10px;
-        font-size: 14px;
+        flex: 1 1 calc(50% - 8px);
+        min-width: 0; width: auto; white-space: normal;
       }
-      #shotPreview .plate-preview img {
-        max-width: 160px;
-      }
+      .violation-editor .time-selects select { min-width: 0; }
     }
+    @media (max-width: 360px) {
+      #shotPreview .tool-row .btn { flex: 1 1 100%; min-width: 0; width: 100%; }
+      #shotPreview .plate-preview img { max-width: 160px; }
+    }
+
+    /* =========================================================
+       Hardening（保守保護）
+       ========================================================= */
+    html, body { overflow-x: hidden; }
+    .page, #shotPreview, .violation-editor {
+      width: min(100%, var(--content-max)); margin-inline: auto;
+    }
+    .media-area, .violation-editor, #staticImageContainer, #shotPreview .editor-right {
+      max-width: 100%; overflow: hidden;
+    }
+    img, video, canvas { max-width: 100%; height: auto; display: block; }
+    #shotPreview .editor-grid { overflow-x: hidden; }
   </style>
 </head>
 <body>
-  <h1>違規檢舉小幫手</h1>
-
-  <!-- 顯示在畫面最右上角的主題切換開關（新增） -->
-  <div class="theme-toggle" role="group" aria-label="主題切換">
-    <span class="label" id="themeLabel">深色</span>
-    <input type="checkbox" id="themeSwitch" aria-labelledby="themeLabel" />
+  <div class="page-title-bar">
+    <div>
+      <h1>違規檢舉小幫手</h1>
+    </div>
+    <!-- 顯示在畫面最右上角的主題切換開關 -->
+    <div class="theme-toggle" role="group" aria-label="主題切換">
+      <span class="label" id="themeLabel">深色</span>
+      <input type="checkbox" id="themeSwitch" aria-labelledby="themeLabel" />
+    </div>
   </div>
 
   <!-- 檔案選擇與狀態（含「顯示 Log」核取方塊） -->
   <div class="panel">
     <div class="controls">
-      <input id="file" type="file" accept="video/*,audio/*,.ts" />
+      <input id="file" type="file" accept="video/*,.ts" />
       <span id="fileInfo" class="hint">請選擇影片（支援 .mp4 / .ts / .mov 等）</span>
     </div>
-    <p class="status" id="status">狀態：初始化中…</p>
+    <p class="status" id="status" role="status" aria-live="polite">狀態：初始化中…</p>
     <div class="controls">
       <label><input type="checkbox" id="toggleLog" /> 顯示 Log</label>
     </div>
@@ -442,9 +461,8 @@
   <!-- 主面板：預覽 + 上下雙滑桿 + 按鈕 -->
   <div class="panel">
     <div class="col">
-      <!-- 左側：預覽與上下雙滑桿（同一 .media-area 中，左右切齊） -->
+      <!-- 左側：預覽與上下雙滑桿 -->
       <div class="media-area">
-        <!-- <h3>預覽</h3> -->
         <div>
           <h3>輸出操作</h3>
           <div class="controls">
@@ -457,7 +475,7 @@
 
         <video id="preview" controls playsinline></video>
         <div class="time" style="margin-top:.5rem;">
-          目前：<span id="cur">00:00:00.00</span>　／　片長：<span id="dur">00:00:00.00</span>
+          目前：<span id="cur">00:00:00.00</span> / 片長：<span id="dur">00:00:00.00</span>
         </div>
 
         <div class="stacked-slider">
@@ -478,6 +496,7 @@
           </div>
         </div>
       </div>
+
       <!-- 右側：編輯車牌、日期、違規事項區域 -->
       <div>
         <h3 class="group-title">違規資訊</h3>
@@ -509,26 +528,20 @@
     const logEl      = document.getElementById('log');
     const logPanel   = document.getElementById('logPanel');
     const toggleLog  = document.getElementById('toggleLog');
-
     const fileInput  = document.getElementById('file');
     const fileInfo   = document.getElementById('fileInfo');
     const preview    = document.getElementById('preview');
     const curEl      = document.getElementById('cur');
     const durEl      = document.getElementById('dur');
-
     const rail       = document.getElementById('rail');
     const selectionEl= document.getElementById('selection');
-
     const startRange = document.getElementById('startRange');
     const endRange   = document.getElementById('endRange');
     const startLabel = document.getElementById('startLabel');
     const endLabel   = document.getElementById('endLabel');
-
     const btnClip         = document.getElementById('btnClip');
     const btnDownloadFull = document.getElementById('btnDownloadFull');
     const btnThumbnail    = document.getElementById('btnThumbnail');
-    const outEl           = document.getElementById('out');
-
     const shotPreviewBox  = document.getElementById('shotPreview');
 
     toggleLog.addEventListener('change', () => {
@@ -541,21 +554,21 @@
       const sw = document.getElementById('themeSwitch');
       const lbl = document.getElementById('themeLabel');
       if (!sw || !lbl) return;
-    
+
       // 根據 localStorage 或系統偏好初始化
       const LS_KEY = 'app-theme';
       const saved = localStorage.getItem(LS_KEY); // 'dark' | 'light' | null
       const sysPrefersLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
-    
+
       let theme = saved || (sysPrefersLight ? 'light' : 'dark');
       applyTheme(theme);
-    
+
       // 切換事件
       sw.addEventListener('change', () => {
         theme = sw.checked ? 'light' : 'dark';
         applyTheme(theme, true);
       });
-    
+
       // 套用主題並記錄
       function applyTheme(mode, persist = false) {
         if (mode === 'light') {
@@ -614,10 +627,21 @@
       errlog('無法 import ./ffmpeg/index.js：', e?.message || e);
     }
 
+    async function waitSWReady(ms = 5000) {
+      try {
+        return await Promise.race([
+          navigator.serviceWorker.ready,
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Service Worker 啟動逾時')), ms))
+        ]);
+      } catch (e) {
+        errlog('Service Worker 可能未就緒：', e?.message || e);
+      }
+    }
+
     const startFFmpeg = async () => {
       try {
         statusEl.textContent = '狀態：等待 Service Worker 就緒…';
-        await navigator.serviceWorker.ready;
+        await waitSWReady(5000);
         log('crossOriginIsolated =', String(self.crossOriginIsolated));
         ffmpeg = new FFmpegCtor();
         if (ffmpeg?.on) {
@@ -637,6 +661,16 @@
 
     await startFFmpeg();
 
+    function toast(msg) {
+      const div = document.createElement('div');
+      Object.assign(div.style, {
+        position: 'fixed', left: '50%', bottom: '24px', transform: 'translateX(-50%)',
+        background: '#1d2129', color: '#fff', padding: '8px 12px', borderRadius: '6px',
+        fontSize: '14px', zIndex: '9999', border: '1px solid var(--border)'
+      });
+      div.textContent = msg; document.body.appendChild(div); setTimeout(() => div.remove(), 1200);
+    }
+
     /********** 檔案狀態（TS → 自動重封裝 MP4） **********/
     let selectedFileRaw = null;
     let playableBlob    = null;
@@ -653,7 +687,6 @@
       btnThumbnail.disabled = !enabled;
     }
     function resetClipUI(dur = 0) {
-      // 若 dur>0，改用片長；否則以 0/100 的初始百分比顯示
       if (dur > 0) {
         startRange.min = 0; endRange.min = 0;
         startRange.max = dur; endRange.max = dur;
@@ -661,12 +694,11 @@
       } else {
         startRange.min = 0; endRange.min = 0;
         startRange.max = 100; endRange.max = 100;
-        startRange.value = 0; endRange.value = 100;  // 讓 endRange 預設在 100%
+        startRange.value = 0; endRange.value = 100;
       }
       startLabel.textContent = `開始：${fmt(0)}`;
       endLabel.textContent   = `結束：${fmt(dur || 0)}`;
       updateSelectionBar();
-      outEl.textContent = '';
       requestAnimationFrame(() => {     // 佈局完成後再保險重畫
         updateSelectionBar();
       });
@@ -679,11 +711,17 @@
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
 
-    /********** 檔案選擇（不自動播放；TS 自動重封裝 MP4） **********/
+    // ✅ 快照 URL 追蹤與釋放
+    let lastSnapshotURL = null;
     fileInput.onchange = async () => {
       const file = fileInput.files?.[0];
+      // 清理快照 URL
+      if (lastSnapshotURL) { URL.revokeObjectURL(lastSnapshotURL); lastSnapshotURL = null; }
+
       revokeURL(currentObjectURL); currentObjectURL = '';
-      shotPreviewBox.innerHTML = '<span class="hint">尚未擷取縮圖</span>';
+      if (!(EditorLite.isReady && EditorLite.isReady())) {
+        shotPreviewBox.innerHTML = '<span class="hint">尚未擷取縮圖</span>';
+      }
 
       if (!file) {
         selectedFileRaw = null; playableBlob = null; playableName = '';
@@ -705,8 +743,8 @@
           const outName = 'automp4.mp4';
 
           await ffmpeg.writeFile(inName, await fileToUint8Array(file));
-          FfmpegArgs[1] = inName
-          FfmpegArgs[FfmpegArgs.length - 1] = outName
+          FfmpegArgs[1] = inName;
+          FfmpegArgs[FfmpegArgs.length - 1] = outName;
           log('偵測到 TS 檔案自動重封裝為 MP4…', FfmpegArgs);
           await ffmpeg.exec(FfmpegArgs);
 
@@ -716,16 +754,20 @@
           playableName = 'input.mp4';
           autoMp4Url   = URL.createObjectURL(autoMp4Blob);
           currentObjectURL = autoMp4Url;
-          fileInfo.textContent = `已選擇：${file.name}（${(file.size/1024/1024).toFixed(2)} MB）｜已自動轉為 MP4 預覽`;
+          fileInfo.textContent = `已選擇：${file.name}(${(file.size/1024/1024).toFixed(2)} MB) | 已自動轉為 MP4 預覽`;
+
+          // ✅ 清理 FFmpeg 虛擬檔案
+          try { await ffmpeg.deleteFile?.(inName); } catch {}
+          try { await ffmpeg.deleteFile?.(outName); } catch {}
         } else {
           playableBlob = file;
           playableName = inferInputName(file.name);
           autoMp4Blob  = null; autoMp4Url = '';
           currentObjectURL = URL.createObjectURL(file);
-          fileInfo.textContent = `已選擇：${file.name}（${(file.size/1024/1024).toFixed(2)} MB）`;
+          fileInfo.textContent = `已選擇：${file.name}(${(file.size/1024/1024).toFixed(2)} MB)`;
         }
         preview.src = currentObjectURL;
-        preview.load(); // 不自動播放
+        preview.load();
         setActionsEnabled(true);
       } catch (e) {
         errlog('載入/轉檔失敗：', e?.message || e);
@@ -747,7 +789,6 @@
 
     /********** 上下雙滑桿：聯動 + 連動預覽 + 著色選取範圍 **********/
     function updateSelectionBar() {
-      // 若影片尚未載入，使用滑桿自身的 max（100）當百分比基準；載入後用片長（秒）
       const hasDur = isFinite(preview.duration) && preview.duration > 0;
       const rangeMax = hasDur ? preview.duration : parseFloat(startRange.max) || 100;
 
@@ -777,12 +818,10 @@
       startLabel.textContent = `開始：${fmt(hasDur ? s : 0)}`;
       endLabel.textContent   = `結束：${fmt(hasDur ? e : 0)}`;
 
-      // 只有在影片已載入時才跳時間點
       if (hasDur) {
         if (who === 'start' && isFinite(s)) preview.currentTime = s;
         if (who === 'end'   && isFinite(e)) preview.currentTime = e;
       }
-
       updateSelectionBar();
     };
     startRange.addEventListener('input', () => clampAndPreview('start'));
@@ -803,7 +842,6 @@
     /********** 功能 1：剪輯並輸出（不重編碼，-c copy）→ 直接下載 **********/
     btnClip.onclick = async () => {
       try {
-        outEl.textContent = '';
         if (!playableBlob) { alert('請先選擇檔案'); return; }
 
         const s = parseFloat(startRange.value);
@@ -819,23 +857,30 @@
 
         const ss = s.toFixed(2);
         const to = e.toFixed(2);
+        // 精準（較慢）：-ss 在 -i 之後
         await ffmpeg.exec(['-i', inName, '-ss', ss, '-to', to, '-c', 'copy', outName]);
 
         const data = await ffmpeg.readFile(outName);
         const blob = new Blob([data.buffer], { type: 'video/mp4' });
         triggerDownloadFromBlob(blob, outName);
-        outEl.textContent = `已下載剪輯檔（${ss}s → ${to}s）`;
+        toast(`已下載剪輯檔 (${ss}s → ${to}s)`);
         log('剪輯完成並已觸發下載 ✅');
       } catch (e) {
         errlog('快速剪輯失敗：', e?.message || e);
         alert('剪輯失敗：' + (e?.message || e));
+      } finally {
+        // 清理暫存檔案
+        try { await ffmpeg.deleteFile?.('clip.mp4'); } catch {}
+        try {
+          const inName = playableName || 'input.mp4';
+          await ffmpeg.deleteFile?.(inName);
+        } catch {}
       }
     };
 
-    /********** 功能 2：下載完整轉檔（TS 直接下載自動 MP4；非 TS 轉一次再下載） **********/
+    /********** 功能 2：下載完整轉檔 **********/
     btnDownloadFull.onclick = async () => {
       try {
-        outEl.textContent = '';
         if (!selectedFileRaw) { alert("請先選擇檔案"); return; }
 
         const lower = (selectedFileRaw.name || '').toLowerCase();
@@ -844,21 +889,23 @@
         if (isTS) {
           if (autoMp4Blob) {
             triggerDownloadFromBlob(autoMp4Blob, 'converted.mp4');
-            outEl.textContent = '已下載自動轉檔 MP4';
+            toast('已下載自動轉檔 MP4');
             log('TS 已自動轉檔完成，觸發下載 converted.mp4 ✅');
             return;
           }
           const inName = 'input.ts';
           const outName = 'automp4.mp4';
           await ffmpeg.writeFile(inName, await fileToUint8Array(selectedFileRaw));
-          FfmpegArgs[1] = inName
-          FfmpegArgs[FfmpegArgs.length - 1] = outName
+          FfmpegArgs[1] = inName;
+          FfmpegArgs[FfmpegArgs.length - 1] = outName;
           await ffmpeg.exec(FfmpegArgs);
           const data = await ffmpeg.readFile(outName);
           const blob = new Blob([data.buffer], { type: 'video/mp4' });
           triggerDownloadFromBlob(blob, 'converted.mp4');
-          outEl.textContent = '已下載自動轉檔 MP4';
+          toast('已下載自動轉檔 MP4');
           log('TS 重新自動轉檔後觸發下載 ✅');
+          try { await ffmpeg.deleteFile?.(inName); } catch {}
+          try { await ffmpeg.deleteFile?.(outName); } catch {}
         } else {
           const inName = inferInputName(selectedFileRaw.name);
           await ffmpeg.writeFile(inName, await fileToUint8Array(selectedFileRaw));
@@ -866,8 +913,10 @@
           const data = await ffmpeg.readFile('output.mp4');
           const blob = new Blob([data.buffer], { type: 'video/mp4' });
           triggerDownloadFromBlob(blob, 'output.mp4');
-          outEl.textContent = '已下載 output.mp4';
+          toast('已下載自動轉檔 MP4');
           log('完整轉檔完成並已觸發下載 ✅');
+          try { await ffmpeg.deleteFile?.(inName); } catch {}
+          try { await ffmpeg.deleteFile?.('output.mp4'); } catch {}
         }
       } catch (e) {
         errlog('完整轉檔失敗：', e?.message || e);
@@ -875,40 +924,35 @@
       }
     };
 
-    /********** 功能 3：擷取縮圖（使用目前預覽時間點）→ 大面板顯示 **********/
+    /********** 功能 3：擷取縮圖 **********/
     btnThumbnail.onclick = async () => {
       try {
-        // 提示擷取中（沿用你的 UI 容器）
-        shotPreviewBox.innerHTML = '<span class="hint">擷取中…</span>';
+        if (!(EditorLite.isReady && EditorLite.isReady())) {
+          shotPreviewBox.innerHTML = '<span class="hint">擷取中…</span>';
+        }
     
-        // 驗證來源（沿用你的 preview <video>）
         if (!preview || !preview.videoWidth) {
           alert("影片尚未載入或沒有可用影格");
           shotPreviewBox.innerHTML = '<span class="hint">尚未擷取縮圖</span>';
           return;
         }
-    
-        // 與目前影格同步：優先 requestVideoFrameCallback，否則退回 requestAnimationFrame
         await new Promise((resolve) => {
           if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
             let done = false;
             preview.requestVideoFrameCallback(() => { if (!done) { done = true; resolve(); } });
-            // 若影片已暫停，避免等待
             if (preview.paused) { done = true; resolve(); }
           } else {
             requestAnimationFrame(() => resolve());
           }
         });
-    
         const w = preview.videoWidth;
         const h = preview.videoHeight;
-    
-        // 以臨時 Canvas 擷取（不改你既有 DOM）
         const canvas = document.createElement('canvas');
         canvas.width = w; canvas.height = h;
         const ctx = canvas.getContext('2d');
+        const t = preview.currentTime;
+        const ss = isFinite(t) ? t.toFixed(2) : '0';
     
-        // 高效擷取：createImageBitmap(preview) → drawImage；失敗時退回直接 drawImage(preview)
         if ('createImageBitmap' in window) {
           try {
             const bmp = await createImageBitmap(preview);
@@ -921,36 +965,38 @@
           ctx.drawImage(preview, 0, 0, w, h);
         }
     
-        // 產生 PNG Blob 與 URL（你要 JPEG/WebP 也可把 type/quality 改掉）
         const blob = await new Promise((resolve, reject) =>
           canvas.toBlob(b => b ? resolve(b) : reject(new Error('toBlob 失敗')), 'image/png', 0.92)
         );
         const url = URL.createObjectURL(blob);
-    
+
+        // 釋放上一張快照 URL
+        if (lastSnapshotURL && lastSnapshotURL !== url) {
+          URL.revokeObjectURL(lastSnapshotURL);
+        }
+        lastSnapshotURL = url;
+
         // 顯示到你保留的 #shotPreview（不新增任何外部節點/屬性）
-        shotPreviewBox.innerHTML = '';
-        const img = document.createElement('img');
-        const t = preview.currentTime;
-        const ss = isFinite(t) ? t.toFixed(2) : '0';
-        img.src = url;
-        img.alt = `縮圖（${ss}s）`;
-        img.loading = 'lazy';
-        img.decoding = 'async';
-        shotPreviewBox.appendChild(img);
-    
-        // 更新狀態面板（沿用你的 outEl）
-        outEl.textContent = `已擷取縮圖（${ss}s）`;
-    
-        // 紀錄（沿用你的 log）
+        if (!(EditorLite.isReady && EditorLite.isReady())) {
+          shotPreviewBox.innerHTML = '';
+          const img = document.createElement('img');
+          img.src = url;
+          img.alt = `縮圖（${ss}s）`;
+          img.loading = 'lazy';
+          img.decoding = 'async';
+          shotPreviewBox.appendChild(img);
+        }
+        toast(`已擷取縮圖（${ss}s）`);
         log('Canvas 擷取完成 ✅', { currentTime: ss, width: w, height: h });
 
-        // 顯示到 #shotPreview 完成後，初始化編輯器（把容器與主頁的 <video id="preview"> 傳進去）
-        EditorLite.init(shotPreviewBox, { videoEl: preview, snapshotURL: url });
-
-        // 若你要同時下載快照，打開以下兩行（不影響其他功能）：
-        // const a = document.createElement('a'); a.href = url; a.download = `snapshot_${Date.now()}.png`; a.click();
-    
-        // 若需清理 URL，請在你既有的「重置／清除」流程裡調用 URL.revokeObjectURL(url)
+        // 初始化或僅換底圖（避免重建 UI 造成狀態不同步）
+        if (EditorLite.isReady && EditorLite.isReady()) {
+          // 已經初始化過僅換底圖
+          EditorLite.loadSnapshot(url);
+        } else {
+          // 第一次初始化
+          EditorLite.init(shotPreviewBox, { videoEl: preview, snapshotURL: url });
+        }
       } catch (e) {
         shotPreviewBox.innerHTML = '<span class="hint">尚未擷取縮圖</span>';
         errlog('擷取縮圖失敗：', e?.message || e);
@@ -960,75 +1006,11 @@
 
     /** =========================
      * 違規紀錄編輯器（命名空間版）
-     * - 左靠齊、手機不超出框線
-     * - 24h 時/分下拉（00–23 / 00–59）
-     * - 車牌兩格：最多 4 位英數、轉大寫、去非英數；寬度 80px
-     * - 可編輯 textarea；暫停自動更新；複製到剪貼簿
-     * - 樣式使用你的主題色 var(--panel)/var(--border)/var(--fg)
      * ========================= */
     function initViolationEditor(root) {
-      // ----- 建立結構（加上樣式前綴容器） -----
       root.innerHTML = `
-        <style>
-          .violation-editor * { box-sizing: border-box; }
-          .violation-editor {
-            font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans TC", Arial, "PingFang TC", "Microsoft JhengHei", sans-serif;
-            color: var(--fg);
-            background: var(--panel);
-            line-height: 1.5;
-          }
-          .violation-editor .toolbar {
-            display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center;
-            border: 1px solid var(--border); padding: 12px; border-radius: 6px; background: var(--panel);
-          }
-          .violation-editor .group { display: inline-flex; align-items: center; gap: 8px; flex: 0 1 auto; }
-          @media (max-width: 640px) { .violation-editor .group.full { flex-basis: 100%; } }
-          .violation-editor label { font-size: 14px; color: #9aa5b1; white-space: nowrap; flex: 0 0 auto; }
-    
-          .violation-editor input[type="text"],
-          .violation-editor input[type="date"],
-          .violation-editor select,
-          .violation-editor textarea,
-          .violation-editor button {
-            border: 1px solid var(--border);
-            padding: 6px 8px; font-size: 14px; border-radius: 6px;
-            background: var(--panel); color: var(--fg); outline: none;
-          }
-          .violation-editor input:focus,
-          .violation-editor select:focus,
-          .violation-editor textarea:focus,
-          .violation-editor button:focus {
-            border-color: #1f3d5e;
-            box-shadow: 0 0 0 3px rgba(31, 61, 94, 0.25);
-          }
-    
-          /* 車牌輸入框縮窄：每格 80px */
-          .violation-editor #ve-plate1, .violation-editor #ve-plate2 { width: 80px; }
-          .violation-editor .plate-boxes { display: inline-flex; gap: 8px; align-items: center; }
-          .violation-editor .dash { color: #9aa5b1; user-select: none; }
-    
-          /* 24h 時間下拉 */
-          .violation-editor .time-selects { display: inline-flex; gap: 8px; align-items: center; }
-          .violation-editor .time-selects select { min-width: 80px; }
-    
-          /* 預覽／輸出區 */
-          .violation-editor .preview {
-            margin-top: 14px; border: 1px solid var(--border); padding: 12px;
-            background: var(--panel); border-radius: 6px;
-          }
-          .violation-editor textarea#ve-output {
-            width: 100%; height: 140px; font-size: 18px; font-weight: 700;
-            border: none; background: transparent; resize: vertical; line-height: 1.7;
-          }
-    
-          .violation-editor .control-row { display: flex; align-items: center; gap: 12px; margin-top: 8px; flex-wrap: wrap; }
-          .violation-editor .btn { var(--panel); color: var(--fg); border-color: var(--border); cursor: pointer; }
-          .violation-editor .btn:hover { background: #222833; border-color: #1f3d5e; }
-        </style>
-    
         <div class="violation-editor">
           <div class="toolbar" role="group" aria-label="違規資料輸入區">
-            <!-- 車牌（每格最多 4 字，英數、轉大寫） -->
             <div class="group">
               <label for="ve-plate1">車牌號碼：</label>
               <div class="plate-boxes">
@@ -1065,31 +1047,24 @@
                 <!-- 可自行新增更多選項 -->
               </select>
             </div>
-    
-            <!-- 日期 -->
             <div class="group">
               <label for="ve-date">違規日期：</label>
               <input id="ve-date" type="date" />
             </div>
-    
-            <!-- 時間（24h 下拉） -->
             <div class="group">
               <label for="ve-hour">違規時間：</label>
-              <div class="time-selects" aria-label="違規時間（24小時制）">
-                <select id="ve-hour" aria-label="小時（00-23）"></select>
-                <select id="ve-minute" aria-label="分鐘（00-59）"></select>
+              <div class="time-selects" aria-label="違規時間">
+                <select id="ve-hour" aria-label="小時"></select>
+                <select id="ve-minute" aria-label="分鐘"></select>
               </div>
             </div>
-    
-            <!-- 路段 -->
             <div class="group full">
               <label for="ve-road">路段：</label>
               <input id="ve-road" type="text" style="min-width: 240px; flex: 1 1 auto;"
                      value="違規地址" placeholder="請在此填寫違規地址" aria-label="請在此填寫違規地址" />
             </div>
           </div>
-    
-          <!-- 可編輯輸出 -->
+
           <div class="preview" aria-live="polite">
             <textarea id="ve-output" spellcheck="false"></textarea>
             <div class="control-row">
@@ -1099,10 +1074,8 @@
           </div>
         </div>
       `;
-    
-      // ----- 作用域工具 -----
+
       const $ = (sel) => root.querySelector(sel);
-      // 24h 時間下拉
       function buildTimeOptions() {
         const hSel = $('#ve-hour'); const mSel = $('#ve-minute');
         hSel.innerHTML = ''; mSel.innerHTML = '';
@@ -1113,8 +1086,6 @@
           const opt = document.createElement('option'); opt.value = String(m).padStart(2, '0'); opt.textContent = opt.value; mSel.appendChild(opt);
         }
       }
-    
-      // 預設日期時間
       function setDefaultDateTime() {
         const now = new Date();
         const yyyy = now.getFullYear();
@@ -1125,8 +1096,6 @@
         $('#ve-hour').value = String(now.getHours()).padStart(2, '0');
         $('#ve-minute').value = String(rounded % 60).padStart(2, '0');
       }
-    
-      // 車牌輸入：英數、轉大寫、最多 4 字
       function sanitizePlate(el) {
         el.addEventListener('input', () => {
           const cleaned = el.value.replace(/[^0-9a-z]/gi, '').toUpperCase().slice(0, 4);
@@ -1135,16 +1104,12 @@
         });
         el.addEventListener('change', updateOutput);
       }
-    
-      // yyyy/mm/dd
       function formatDateToYMD(dateStr) {
         if (!dateStr) return '';
         const d = new Date(dateStr + 'T00:00:00'); if (isNaN(d.getTime())) return '';
         const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0');
         return `${y}/${m}/${day}`;
       }
-    
-      // 組合文字
       function buildText() {
         const p1 = ($('#ve-plate1').value || '');
         const p2 = ($('#ve-plate2').value || '');
@@ -1157,33 +1122,18 @@
         const vioSel = $('#ve-violation'); const vio = vioSel.value || '（尚未選擇違規項目）';
         return `${dt}，車號: ${plate} 於 "${road}"，${vio}。`;
       }
-    
-      // 更新 textarea（可暫停）
+
       function updateOutput() {
         if ($('#ve-pause').checked) return;
         $('#ve-output').value = buildText();
       }
-    
-      // Toast
-      function toast(msg) {
-        const div = document.createElement('div');
-        Object.assign(div.style, {
-          position: 'fixed', left: '50%', bottom: '24px', transform: 'translateX(-50%)',
-          background: '#1d2129', color: '#fff', padding: '8px 12px', borderRadius: '6px',
-          fontSize: '14px', zIndex: '9999', border: '1px solid var(--border)'
-        });
-        div.textContent = msg; document.body.appendChild(div); setTimeout(() => div.remove(), 1200);
-      }
-    
-      // 綁定事件
+
       function bindEvents() {
         ['#ve-date','#ve-hour','#ve-minute','#ve-violation','#ve-road'].forEach(sel => {
           root.querySelector(sel).addEventListener('input', updateOutput);
           root.querySelector(sel).addEventListener('change', updateOutput);
         });
         $('#ve-pause').addEventListener('change', function () { if (!this.checked) updateOutput(); });
-    
-        // 複製到剪貼簿
         $('#ve-copy').addEventListener('click', async () => {
           const text = $('#ve-output').value;
           try {
@@ -1195,8 +1145,6 @@
           } catch (e) { alert('複製失敗，請手動選取後按 Ctrl+C。'); }
         });
       }
-    
-      // 初始化
       (function init() {
         buildTimeOptions();
         setDefaultDateTime();
@@ -1206,27 +1154,17 @@
         updateOutput();
       })();
     }
-    
-    // 掛載到右側欄位（主面板載入後即可）
     const veMount = document.getElementById('violation-editor-root');
     if (veMount) initViolationEditor(veMount);
 
     /*** === EditorLite 模組（最小整合到 #shotPreview）=== ***/
-    /*** =========================
-     *  EditorLite（深色主題・極簡）
-     *  左：截圖預覽＋工具列＋主畫布
-     *  右：已生成的截圖列表（獨立捲軸）
-     *  新增：撤銷紅框、列表持久化、移除按鈕
-     *  ========================= ***/
-    
-    // 一次性注入 EditorLite 版面樣式（只影響 #shotPreview 內部）
     (function ensureEditorLiteStyles() {
       const id = 'editorlite-styles';
-      if (document.getElementById(id)) return;
+      const el = document.getElementById(id);
+      if (el) { return; }
       const style = document.createElement('style');
       style.id = id;
       style.textContent = `
-        /* Grid：左主畫布 / 右列表 */
         #shotPreview .editor-grid {
           display: grid;
           grid-template-columns: minmax(0, 1fr) 340px;
@@ -1234,32 +1172,41 @@
           gap: 14px;
           align-items: start;
         }
-        /* 左側區塊：標題＋工具列＋主畫布 */
         #shotPreview .editor-left { display: flex; flex-direction: column; gap: 10px; }
         #shotPreview .editor-header { display: flex; align-items: center; gap: 12px; }
         #shotPreview .editor-header h3 { margin: 0; font-weight: 600; color: var(--fg); }
         #shotPreview .tool-row { display: flex; gap: 8px; flex-wrap: wrap; }
         #shotPreview .tool-row .btn {
-          padding: 8px 12px; border: 1px solid var(--border); background: var(--panel); color: var(--fg);
+          padding: 8px 12px; border: 1px solid var(--border);
+          background: var(--panel); color: var(--fg);
           border-radius: 6px; cursor: pointer; font-weight: 600;
         }
         #shotPreview .tool-row .btn:hover { background: var(--panel); }
-    
-        /* 主畫布 */
         #shotPreview .editor-stage {
           position: relative;
-          background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px;
-          min-height: 360px;
+          background: var(--panel);
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          padding: 10px;
+          min-height: clamp(120px, 40vw, 360px);
+        }
+        @media (orientation: portrait) {
+          #shotPreview .editor-stage {
+            min-height: 0;
+            padding-bottom: 8px;
+          }
         }
         #shotPreview #staticImageContainer { position: relative; }
         #shotPreview #staticImage { max-width: 100%; height: auto; display: block; }
-        #shotPreview #drawingOverlay { position: absolute; left: 0; top: 0; display: none; pointer-events: auto; }
+        #shotPreview #drawingOverlay {
+          position: absolute; left: 0; top: 0;
+          display: none; pointer-events: auto;
+        }
         #shotPreview #selectionBox {
-          position: absolute; border: 2px solid #e53935; background: rgba(229,57,53,.12); display: none;
+          position: absolute; border: 2px solid #e53935;
+          background: rgba(229,57,53,.12); display: none;
           border-radius: 4px;
         }
-    
-        /* 車牌預覽列（工具列下方、主畫布上方） */
         #shotPreview .plate-preview {
           display: none; gap: 10px; align-items: center; padding: 8px;
           border: 1px dashed var(--border); border-radius: 6px; background: var(--panel);
@@ -1267,24 +1214,22 @@
         #shotPreview .plate-preview img { border: 2px solid #e53935; max-width: 150px; height: auto; }
         #shotPreview .plate-preview .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
         #shotPreview .plate-preview label { color: var(--fg); }
-    
-        /* 右側列表（固定高度 + 自己的捲軸） */
         #shotPreview .editor-right {
           border: 1px solid var(--border); border-radius: 8px; padding: 10px; background: var(--panel);
           display: flex; flex-direction: column; gap: 8px;
-          max-height: 80vh; /* 固定高度，避免拉長整頁 */
+          max-height: 100%;
         }
         #shotPreview .editor-right h3 { margin: 0; font-weight: 600; color: var(--fg); }
         #shotPreview #generatedImagesArea {
           display: flex; flex-direction: column; gap: 12px;
-          overflow: auto; /* 讓列表自己捲動 */
-          flex: 1;       /* 填滿右側，可滾動 */
+          overflow: auto; flex: 1;
         }
         #shotPreview .generated-image-card {
-          border: 1px solid #000; border-radius: 8px; padding: 8px; background: var(--panel);
+          border: 1px solid var(--border); border-radius: 8px; padding: 8px;
+          background: var(--panel);
         }
         #shotPreview .generated-image-card .inner {
-          border: 1px solid #66bb6a; border-radius: 6px; padding: 6px; background: var(--panel);
+          border: 1px solid var(--border); border-radius: 6px; padding: 6px; background: var(--panel);
         }
         #shotPreview .generated-image-card .header {
           display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 6px; color: var(--fg);
@@ -1298,31 +1243,27 @@
         }
         #shotPreview .generated-image-card .download-btn:hover,
         #shotPreview .generated-image-card .remove-btn:hover { background: var(--panel); }
-    
-        /* 窄螢幕：右列下移堆疊 */
+  
         @media (max-width: 840px) {
           #shotPreview .editor-grid { grid-template-columns: 1fr; }
         }
       `;
       document.head.appendChild(style);
     })();
-    
+
     // ================= EditorLite 主體 =================
     const EditorLite = (() => {
-      // 參照
+      let initialized = false;
       let container;      // #shotPreview
       let videoEl;        // <video id="preview">
       let snapshotURL = '';
     
-      // 左區：工具列、車牌列、主畫布
       let staticImageContainer, staticImage, selectionBox, drawingOverlay;
       let platePreviewArea, plateImg, platePositionSelect, plateScaleInput;
     
-      // 右區：已生成列表（持久化）
       let generatedImagesArea;
       const generatedItems = []; // {id, url, ts}
     
-      // 狀態
       let finalCanvas = document.createElement('canvas');
       let startX, startY, currentX, currentY;
       let isDrawing = false;
@@ -1332,8 +1273,7 @@
       let drawnShapes = [];
       let plateImageInMemory = null;
       let currentShape = null;
-    
-      // 撤銷
+
       function undoLastShape() {
         if (drawnShapes.length > 0) {
           drawnShapes.pop();
@@ -1353,36 +1293,33 @@
     
         // 清空容器（外層不動）
         container.innerHTML = '';
-    
-        // Grid：左、右
+
         const grid = document.createElement('div');
         grid.className = 'editor-grid';
-    
-        // ---- 左側：標題、工具列（含撤銷）、車牌列、主畫布 ----
+
         const left = document.createElement('section');
         left.className = 'editor-left';
-    
-        // 標題＋工具列
+
         const header = document.createElement('div');
         header.className = 'editor-header';
-        const h3 = document.createElement('h3'); h3.textContent = ''; //截圖預覽
+        const h3 = document.createElement('h3'); h3.textContent = ''; // 截圖預覽
         const toolRow = document.createElement('div'); toolRow.className = 'tool-row';
-    
-        const btnCrop = document.createElement('button'); btnCrop.textContent = '擷取車牌範圍'; btnCrop.className = 'btn';
-        drawingModeBtn = document.createElement('button'); drawingModeBtn.textContent = '啟用/關閉自訂紅框'; drawingModeBtn.className = 'btn';
+
+        const btnCrop = document.createElement('button'); btnCrop.textContent = '重新擷取車牌'; btnCrop.className = 'btn';
+        drawingModeBtn = document.createElement('button'); drawingModeBtn.textContent = '開啟紅框編輯'; drawingModeBtn.className = 'btn';
         const btnUndo = document.createElement('button'); btnUndo.textContent = '撤銷紅框 (Ctrl+Z)'; btnUndo.className = 'btn';
         const btnGenerate = document.createElement('button'); btnGenerate.textContent = '產生最終截圖'; btnGenerate.className = 'btn';
-    
+
         toolRow.append(btnCrop, drawingModeBtn, btnUndo, btnGenerate);
         header.append(h3, toolRow);
         left.appendChild(header);
-    
+
         // 車牌預覽列
         platePreviewArea = document.createElement('div');
         platePreviewArea.className = 'plate-preview';
         const plateLabel = document.createElement('span'); plateLabel.textContent = '車牌預覽：'; plateLabel.style.color = 'var(--fg)';
         plateImg = document.createElement('img'); plateImg.alt = '車牌預覽圖'; plateImg.style.display = 'none';
-    
+
         const posGroup = document.createElement('div'); posGroup.className = 'row';
         const posLabel = document.createElement('label'); posLabel.textContent = '位置';
         platePositionSelect = document.createElement('select');
@@ -1391,58 +1328,94 @@
           opt.textContent = ({bottomRight:'右下角', topRight:'右上角', bottomLeft:'左下角', topLeft:'左上角'})[v];
           platePositionSelect.appendChild(opt);
         });
-    
+
         const scaleGroup = document.createElement('div'); scaleGroup.className = 'row';
         const scaleLabel = document.createElement('label'); scaleLabel.textContent = '縮放(%)';
         plateScaleInput = document.createElement('input'); plateScaleInput.type = 'range'; plateScaleInput.min = '10'; plateScaleInput.max = '50'; plateScaleInput.value = '30';
         const scaleValue = document.createElement('span'); scaleValue.id = 'scaleValue'; scaleValue.textContent = '30%';
-    
+
         plateScaleInput.addEventListener('input', () => { scaleValue.textContent = `${plateScaleInput.value}%`; drawOverlayContent(); });
         platePositionSelect.addEventListener('change', drawOverlayContent);
-    
+
         posGroup.append(posLabel, platePositionSelect);
         scaleGroup.append(scaleLabel, plateScaleInput, scaleValue);
         platePreviewArea.append(plateLabel, plateImg, posGroup, scaleGroup);
         left.appendChild(platePreviewArea);
-    
+
         // 主畫布
         const stage = document.createElement('div');
         stage.className = 'editor-stage';
-    
+
         staticImageContainer = document.createElement('div');
         staticImageContainer.id = 'staticImageContainer';
         staticImageContainer.style.cursor = 'crosshair';
         staticImageContainer.style.touchAction = 'none';
-    
+
         staticImage = document.createElement('img');
         staticImage.id = 'staticImage';
         staticImage.alt = '靜態截圖預覽';
         staticImage.style.display = 'none';
-    
+
         selectionBox = document.createElement('div'); selectionBox.id = 'selectionBox';
         drawingOverlay = document.createElement('canvas'); drawingOverlay.id = 'drawingOverlay';
-    
+
         staticImageContainer.append(staticImage, selectionBox, drawingOverlay);
         stage.appendChild(staticImageContainer);
         left.appendChild(stage);
-    
+
         // ---- 右側：列表（固定高度 + 自己捲軸） ----
         const right = document.createElement('aside');
         right.className = 'editor-right';
-        const rh3 = document.createElement('h3'); rh3.textContent = '已生成的截圖列表';
-        generatedImagesArea = document.createElement('div'); generatedImagesArea.id = 'generatedImagesArea';
-        right.append(rh3, generatedImagesArea);
-    
+        
+        // 標題 + 全部下載按鈕（保留原本標題）
+        const headerBar = document.createElement('div');
+        headerBar.style.display = 'flex';
+        headerBar.style.alignItems = 'center';
+        headerBar.style.justifyContent = 'space-between';
+        headerBar.style.gap = '8px';
+        
+        const rh3 = document.createElement('h3');
+        rh3.textContent = '截圖列表';
+
+        const clearAllBtn = document.createElement('button');
+        clearAllBtn.textContent = '全部清除';
+        clearAllBtn.className = 'remove-btn';
+        clearAllBtn.style.whiteSpace = 'nowrap';
+        
+        // 綁定清除全部事件（下方會定義 clearAllGenerated）
+        clearAllBtn.onclick = clearAllGenerated;
+
+        const downloadAllBtn = document.createElement('button');
+        downloadAllBtn.textContent = '全部下載';
+        downloadAllBtn.className = 'download-btn';
+        downloadAllBtn.style.whiteSpace = 'nowrap';
+        
+        // 綁定下載全部事件
+        downloadAllBtn.onclick = DownloadIndividually;
+        const btnGroup = document.createElement('div');
+        btnGroup.style.display = 'flex';
+        btnGroup.style.gap = '8px';
+        btnGroup.append(clearAllBtn, downloadAllBtn);
+        
+        headerBar.append(rh3, btnGroup)
+        
+        // 既有的列表容器
+        generatedImagesArea = document.createElement('div');
+        generatedImagesArea.id = 'generatedImagesArea';
+        
+        // 裝配
+        right.append(headerBar, generatedImagesArea);
+
         // 組裝
         grid.append(left, right);
         container.appendChild(grid);
-    
+
         // 綁定事件
         btnCrop.onclick = startLicensePlateCrop;
         drawingModeBtn.onclick = toggleDrawingMode;
         btnUndo.onclick = undoLastShape;
         btnGenerate.onclick = generateReportImage;
-    
+
         // 快捷鍵：撤銷
         if (!keybound) {
           keybound = true;
@@ -1452,31 +1425,68 @@
             if (withCmd && isZ) { e.preventDefault(); undoLastShape(); }
           });
         }
-    
+
         // 有 snapshotURL：預載底圖＋建立 overlay
         if (snapshotURL) { staticImage.src = snapshotURL; staticImage.style.display = 'block'; setupDrawingOverlay(); }
-    
+
         // 重新渲染既有生成列表（持久化）
         rebuildGeneratedList();
-        
         // ===== 新增：還原車牌預覽列 =====
         restorePlatePreviewIfAny();
-        
         // ✅ 保險：同步右欄高度貼齊左欄
         syncRightHeightWithLeft();
-        
         // ✅ 新增：小螢幕下取消右欄鎖高（以便列表完整顯示）
         disableRightPaneHeightOnMobile();
+        initialized = true;
+      }
+
+      // 一鍵清空「已生成的截圖列表」
+      function clearAllGenerated() {
+        if (!generatedItems || generatedItems.length === 0) {
+          alert('目前沒有可清除的截圖');
+          return;
+        }
+      
+        // 確認提示（避免誤觸）
+        const ok = confirm('確定要刪除所有截圖嗎？此動作無法復原。');
+        if (!ok) return;
+      
+        // 清空記憶體陣列
+        generatedItems.length = 0;
+      
+        // 清空右側列表 DOM
+        if (generatedImagesArea) {
+          generatedImagesArea.innerHTML = '';
+        }
+      }
+
+      // 逐檔觸發下載（瀏覽器可能提示多檔下載）
+      function DownloadIndividually() {
+        if (!generatedItems || generatedItems.length === 0) {
+          alert('目前沒有可下載的截圖');
+          return;
+        }
+        // 依照加入順序逐張下載
+        generatedItems.forEach((item, idx) => {
+          // 檔名：report_YYYYMMDDHHMMSS_xxx.jpg
+          const ts = new Date(item.ts || Date.now()).toISOString().slice(0,19).replace(/[-:T]/g,'');
+          const fileName = `report_${ts}_${idx + 1}.jpg`;
+          const a = document.createElement('a');
+          a.download = fileName;
+          a.href = item.url;        // 支援 dataURL / blob URL
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+        });
       }
 
       function syncRightHeightWithLeft() {
         const leftStage = container.querySelector('.editor-left');   // 左欄（含標題、工具列、主畫布）
         const rightPane = container.querySelector('.editor-right');  // 右欄（列表）
         if (!leftStage || !rightPane) return;
-      
         // 設為左欄實際高度（含 padding/border）
         rightPane.style.height = `${leftStage.offsetHeight}px`;
-      
+
         // 追蹤變化（左欄變動時自動同步）
         if ('ResizeObserver' in window) {
           const ro = new ResizeObserver(() => {
@@ -1495,7 +1505,6 @@
       function disableRightPaneHeightOnMobile() {
         const mq = window.matchMedia('(max-width: 840px)');
         const rightPane = container.querySelector('.editor-right');
-      
         const apply = () => {
           if (!rightPane) return;
           if (mq.matches) {
@@ -1519,6 +1528,10 @@
 
       // ===== 實作：擷取車牌 → 顯示預覽列 =====
       function startLicensePlateCrop() {
+        if (plateImageInMemory) {
+          clearPlateCrop();
+          return;
+        }
         if (!videoEl || !videoEl.src || videoEl.videoWidth === 0) {
           alert('請先在主頁載入並預覽影片！'); return;
         }
@@ -1532,7 +1545,7 @@
         setupDrawingOverlay();
         if (isDrawingMode) toggleDrawingMode();
       }
-    
+
       // ===== Overlay：尺寸與事件綁定 =====
       function setupDrawingOverlay() {
         if (staticImage.style.display === 'none') return;
@@ -1543,19 +1556,18 @@
         drawingOverlay.style.left = `${rect.left - baseRect.left}px`;
         drawingOverlay.style.top  = `${rect.top  - baseRect.top}px`;
         drawingOverlay.style.display = 'block';
-    
         drawingOverlay.addEventListener('pointerdown', startUserDrawing);
         drawingOverlay.addEventListener('pointermove', drawUserMoving);
         drawingOverlay.addEventListener('pointerup', stopUserDrawing);
         drawingOverlay.addEventListener('pointercancel', stopUserDrawing);
-    
+
         staticImageContainer.addEventListener('pointerdown', onSelectStart, { passive: false });
         staticImageContainer.addEventListener('pointermove', onSelectMove, { passive: false });
         staticImageContainer.addEventListener('pointerup',   onSelectEnd,  { passive: false });
         staticImageContainer.addEventListener('pointercancel', onSelectEnd, { passive: false });
-    
+
         drawOverlayContent();
-    
+
         // 追蹤尺寸變化
         if ('ResizeObserver' in window) {
           const ro = new ResizeObserver(() => {
@@ -1604,11 +1616,11 @@
         isDrawing = false;
         staticImageContainer.releasePointerCapture?.(e.pointerId);
         selectionBox.style.display = 'none';
-    
+
         const dx = Math.abs(currentX - startX);
         const dy = Math.abs(currentY - startY);
         if (dx < dragThreshold && dy < dragThreshold) return;
-    
+
         const displayW = staticImage.clientWidth;
         const displayH = staticImage.clientHeight;
         const actualW  = videoEl.videoWidth;
@@ -1617,30 +1629,30 @@
         const scaleY = actualH / displayH;
         const x1 = Math.min(startX, currentX), y1 = Math.min(startY, currentY);
         const x2 = Math.max(startX, currentX), y2 = Math.max(startY, currentY);
-    
+
         finalCropCoords = { x1: Math.round(x1*scaleX), y1: Math.round(y1*scaleY), x2: Math.round(x2*scaleX), y2: Math.round(y2*scaleY) };
         confirmCropArea();
       }
-    
+
       function confirmCropArea() {
         const cropW = finalCropCoords.x2 - finalCropCoords.x1;
         const cropH = finalCropCoords.y2 - finalCropCoords.y1;
         if (cropW <= 0 || cropH <= 0) return;
-    
+
         const c = document.createElement('canvas'); c.width = cropW; c.height = cropH;
         const ctx = c.getContext('2d');
         try {
           ctx.drawImage(videoEl, finalCropCoords.x1, finalCropCoords.y1, cropW, cropH, 0, 0, cropW, cropH);
           plateImageInMemory = new Image();
           plateImageInMemory.src = c.toDataURL('image/jpeg');
-    
+
           plateImg.src = plateImageInMemory.src;
           plateImg.style.display = 'block';
           // 顯示車牌預覽列
           const plateBar = container.querySelector('.plate-preview');
           if (plateBar && plateBar.style) plateBar.style.display = 'flex';
-    
-          plateImageInMemory.onload = drawOverlayContent;
+
+          // ✅ onload 一次設定
           plateImageInMemory.onload = () => {
             drawOverlayContent();
             restorePlatePreviewIfAny(); // ✅ 保險：裁切完成後立即顯示車牌列
@@ -1654,24 +1666,40 @@
         const plateBar = container.querySelector('.plate-preview');
         if (!plateBar) return;
         if (plateImageInMemory) {
-          // 若記憶體已有車牌影像，顯示預覽列與小圖
           plateImg.src = plateImageInMemory.src;
           plateImg.style.display = 'block';
           plateBar.style.display = 'flex';
-          // 重新繪製 overlay（確保位置/縮放立即生效）
           drawOverlayContent?.();
         } else {
-          // 沒有車牌影像時保持隱藏（或你也可選擇顯示但無小圖）
           plateImg.style.display = 'none';
           plateBar.style.display = 'none';
         }
+      }
+
+      // ✅ 清除「已擷取車牌」的暫存影像與相關 UI
+      function clearPlateCrop() {
+        // 1) 清掉記憶體中的暫存車牌影像
+        plateImageInMemory = null;
+        // 2) 清掉裁切座標（可選）
+        finalCropCoords = {};
+        // 3) 隱藏車牌預覽列與預覽圖
+        if (plateImg) {
+          plateImg.removeAttribute('src');
+          plateImg.style.display = 'none';
+        }
+        const plateBar = container.querySelector('.plate-preview');
+        if (plateBar) {
+          plateBar.style.display = 'none';
+        }
+        // 4) 重新繪製 overlay（不再疊車牌）
+        drawOverlayContent?.();
       }
 
       // ===== Overlay 重繪：紅框、車牌貼上 =====
       function drawOverlayContent() {
         const ctx = drawingOverlay.getContext('2d');
         ctx.clearRect(0, 0, drawingOverlay.width, drawingOverlay.height);
-    
+
         if (drawnShapes.length > 0) {
           const displayW = staticImage.clientWidth;
           const displayH = staticImage.clientHeight;
@@ -1681,18 +1709,18 @@
           drawPlateOnCanvas(ctx, drawingOverlay.width, drawingOverlay.height, true);
         }
       }
-    
+
       // ===== 車牌貼上（位置＋縮放） =====
       function drawPlateOnCanvas(ctx, targetW, targetH, isOverlay = false) {
         if (!plateImageInMemory) return;
         const position = platePositionSelect.value || 'bottomRight';
         const scalePercent = (Number(plateScaleInput.value) || 30) / 100;
         const margin = 16;
-    
+
         const ow = plateImageInMemory.width, oh = plateImageInMemory.height;
         let w = targetW * scalePercent;
         let h = (w / ow) * oh;
-    
+
         let x, y;
         switch (position) {
           case 'topRight':    x = targetW - w - margin; y = margin; break;
@@ -1701,18 +1729,18 @@
           case 'bottomRight':
           default:            x = targetW - w - margin; y = targetH - h - margin; break;
         }
-    
+
         ctx.strokeStyle = '#e53935';
         ctx.lineWidth = isOverlay ? 3 : 4;
         ctx.strokeRect(x, y, w, h);
         ctx.drawImage(plateImageInMemory, x, y, w, h);
       }
-    
+
       // ===== 紅框模式切換 + 紅框選項列 =====
       function toggleDrawingMode() {
         isDrawingMode = !isDrawingMode;
         if (isDrawingMode) {
-          drawingModeBtn.textContent = '關閉自訂紅框';
+          drawingModeBtn.textContent = '關閉/清除紅框';
           buildDrawingOptionsIfNeeded();
           const opts = container.querySelector('#drawingOptionsContainer');
           if (opts && opts.style) opts.style.display = 'flex';
@@ -1720,16 +1748,14 @@
           setupDrawingOverlay();
           drawOverlayContent();
         } else {
-          drawingModeBtn.textContent = '啟用/關閉自訂紅框';
+          drawingModeBtn.textContent = '開啟紅框編輯';
           const opts = container.querySelector('#drawingOptionsContainer');
           if (opts && opts.style) opts.style.display = 'none';
-          // 是否清空由你決定；維持原行為：關閉時清空
-          // 如需保留，註解下一行即可：
           clearAllDrawings();
           drawOverlayContent();
         }
       }
-    
+
       function buildDrawingOptionsIfNeeded() {
         if (container.querySelector('#drawingOptionsContainer')) return;
         const bar = document.createElement('div');
@@ -1739,7 +1765,7 @@
           border: '1px solid var(--border)', marginTop:'6px', gap:'10px', alignItems:'center'
         });
         bar.style.flexWrap = 'wrap';
-    
+
         // 形狀
         const shapeGroup = document.createElement('div');
         shapeGroup.className = 'row';
@@ -1748,7 +1774,7 @@
         drawingShapeSelect.id = 'drawingShape';
         drawingShapeSelect.innerHTML = `<option value="rectangle">方框</option><option value="circle">圓框</option>`;
         shapeGroup.append(shapeLabel, drawingShapeSelect);
-    
+
         // 線寬
         const thickGroup = document.createElement('div'); thickGroup.className = 'row';
         const thickLabel = document.createElement('label'); thickLabel.textContent = '粗細(px)'; thickLabel.style.color = 'var(--fg)';
@@ -1757,19 +1783,19 @@
         const thickValue = document.createElement('span'); thickValue.id = 'thicknessValue'; thickValue.textContent = '5px'; thickValue.style.color = 'var(--fg)';
         lineThicknessInput.addEventListener('input', () => { thickValue.textContent = `${lineThicknessInput.value}px`; });
         thickGroup.append(thickLabel, lineThicknessInput, thickValue);
-    
+
         // 傾斜（旋轉）
         const rotGroup = document.createElement('div'); rotGroup.className = 'row';
         const rotLabel = document.createElement('label'); rotLabel.textContent = '傾斜'; rotLabel.style.color = 'var(--fg)';
         rotationCheckbox = document.createElement('input'); rotationCheckbox.type = 'checkbox'; rotationCheckbox.id = 'enableRotation';
         rotGroup.append(rotLabel, rotationCheckbox);
-    
+
         bar.append(shapeGroup, thickGroup, rotGroup);
         // 插入位置：車牌列之後、主畫布之前
         const left = container.querySelector('.editor-left');
         left.insertBefore(bar, left.querySelector('.editor-stage'));
       }
-    
+
       // ===== 使用者紅框互動 =====
       function startUserDrawing(e) {
         if (!isPrimaryPointer(e)) return;
@@ -1818,7 +1844,7 @@
         drawOverlayContent();
       }
       function clearAllDrawings() { drawnShapes = []; drawOverlayContent(); }
-    
+
       // ===== 紅框繪製 =====
       function drawShape(ctx, shape, scaleX, scaleY) {
         ctx.strokeStyle = '#e53935';
@@ -1851,60 +1877,62 @@
         }
         drawnShapes.forEach(s => drawShape(ctx, s, scaleX, scaleY));
       }
-    
-      // ===== 生成最終截圖並加入列表（持久化） =====
+
+      // ===== 生成最終截圖並加入列表 =====
       function generateReportImage() {
         if (!plateImageInMemory) { alert('請先擷取車牌特寫！'); return; }
         if (!videoEl?.src) return;
         videoEl.pause();
-    
+
         finalCanvas.width  = videoEl.videoWidth;
         finalCanvas.height = videoEl.videoHeight;
         const ctx = finalCanvas.getContext('2d');
         ctx.drawImage(videoEl, 0, 0, finalCanvas.width, finalCanvas.height);
-    
+
         drawAllUserShapes(ctx, finalCanvas.width, finalCanvas.height, false);
         drawPlateOnCanvas(ctx, finalCanvas.width, finalCanvas.height, false);
-    
+
         const url = finalCanvas.toDataURL('image/jpeg');
         pushGeneratedItem(url);
       }
-    
+
       function pushGeneratedItem(url) {
-        const id = `gen_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
-        generatedItems.push({ id, url, ts: Date.now() });
-        renderGeneratedCard({ id, url, ts: Date.now() });
+        const ts = Date.now();
+        const id = `gen_${ts}_${Math.random().toString(36).slice(2,8)}`;
+        const item = { id, url, ts };
+        generatedItems.push(item);
+        renderGeneratedCard(item);
       }
-    
+
       function renderGeneratedCard(item) {
         const { id, url, ts } = item;
         const card = document.createElement('div'); card.className = 'generated-image-card';
         const inner = document.createElement('div'); inner.className = 'inner';
-    
+
         const header = document.createElement('div'); header.className = 'header';
         const info = document.createElement('span'); info.textContent = `產生時間: ${new Date(ts).toLocaleString()}`;
-    
+
         const btnRow = document.createElement('div'); btnRow.className = 'btn-row';
         const btnRemove = document.createElement('button'); btnRemove.textContent = '移除'; btnRemove.className = 'remove-btn';
         const btnDownload = document.createElement('button'); btnDownload.textContent = '下載'; btnDownload.className = 'download-btn';
-    
+
         const img = document.createElement('img'); img.src = url; img.id = id;
         btnDownload.onclick = () => downloadImg(id, `report_${new Date(ts).toISOString().slice(0,19).replace(/[-:T]/g,'')}.jpg`);
         btnRemove.onclick = () => removeGeneratedItem(id);
         img.addEventListener('click', () => showPreview(url));
-    
+
         header.append(info, btnRow);
         btnRow.append(btnRemove, btnDownload);
         inner.append(header, img);
         card.append(inner);
         generatedImagesArea.appendChild(card);
       }
-    
+
       function rebuildGeneratedList() {
         generatedImagesArea.innerHTML = '';
         generatedItems.forEach(renderGeneratedCard);
       }
-    
+
       function removeGeneratedItem(id) {
         const idx = generatedItems.findIndex(x => x.id === id);
         if (idx >= 0) generatedItems.splice(idx, 1);
@@ -1914,13 +1942,13 @@
           card?.remove();
         }
       }
-    
+
       function downloadImg(elementId, filename) {
         const el = document.getElementById(elementId);
         if (!el?.src) return;
         const a = document.createElement('a'); a.download = filename; a.href = el.src; a.click();
       }
-    
+
       // 浮動大圖預覽
       let previewLayer = null;
       function showPreview(url) {
@@ -1941,11 +1969,52 @@
         previewLayer.style.display = 'block';
       }
       function hidePreview() { if (previewLayer) previewLayer.style.display = 'none'; }
-    
+
       // 主指標判斷（滑鼠左鍵／第一根手指）
       function isPrimaryPointer(e) { return e.isPrimary !== false; }
+
+      // 載入／替換快照（不重建 UI；不動 isDrawingMode／右側列表等狀態）
+      function loadSnapshot(url) {
+        if (!container) return;
+
+        snapshotURL = url || '';
+
+        // 1) 設定底圖
+        if (!staticImage) return;
+        staticImage.src = snapshotURL;
+        staticImage.style.display = 'block';
+
+        // 2) 等圖片可用後，建立/刷新 overlay 並重繪
+        const onImgReady = () => {
+          // 依你原本流程：重新計算 overlay 尺寸與位置，並重繪
+          setupDrawingOverlay();
+          // 清空已畫紅框
+          clearAllDrawings();
+          drawOverlayContent();
+          // 若先前曾顯示車牌預覽列，可視需要保留或復原
+          restorePlatePreviewIfAny?.();
+        };
     
-      return { init };
+        if (staticImage.complete) {
+          // 圖片可能已經在快取
+          onImgReady();
+        } else {
+          staticImage.onload = () => {
+            staticImage.onload = null;
+            onImgReady();
+          };
+          staticImage.onerror = () => {
+            staticImage.onerror = null;
+            console.error('載入快照失敗：', snapshotURL);
+          };
+        }
+      }
+      // 將初始化狀態以方法暴露，方便外層判斷
+      function isReady() {
+        return !!initialized;
+      }
+      // 注意：這裡把回傳物件擴充，讓外部能呼叫 loadSnapshot 與檢查 isReady
+      return { init, loadSnapshot, isReady };
     })();
 
     // 在所有函式宣告之後加上這段「啟動即更新」
