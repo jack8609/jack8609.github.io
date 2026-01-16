@@ -90,19 +90,19 @@
        ========================================================= */
     .theme-toggle input[type="checkbox"] {
       appearance: none;
-      width: 42px; height: 24px;
+      width: 30px; height: 10px;
       border-radius: 999px;
       background: #9aa5b1;
       position: relative;
       outline: none;
       cursor: pointer;
       transition: background .2s ease;
-      border: 1px solid var(--border);
+      border: 0px solid var(--border);
     }
     .theme-toggle input[type="checkbox"]::after {
       content: "";
       position: absolute;
-      top: 2px; left: 2px;
+      top: -4px; left: 0px;
       width: 18px; height: 18px;
       background: #fff;
       border-radius: 50%;
@@ -111,7 +111,7 @@
     }
     .theme-toggle input[type="checkbox"]:checked { background: var(--accent-color); }
     .theme-toggle input[type="checkbox"]:checked::after { transform: translateX(18px); }
-    .theme-toggle .label { font-size: 13px; color: inherit; }
+    .theme-toggle .label { font-size: clamp(10px, 4vw, 13px);; color: inherit; }
     @supports (-webkit-touch-callout: none) {
       .theme-toggle { margin-top: calc(env(safe-area-inset-top) + 8px); }
     }
@@ -156,7 +156,7 @@
     /* 窄螢幕時縮小右側預留空間與字級，降低碰撞機率 */
     @media (max-width: 420px) {
       .page-title-bar { padding-right: 96px; }
-      .page-title-bar h1 { font-size: clamp(18px, 4vw, 22px); }
+      .page-title-bar h1 { font-size: clamp(16px, 4vw, 24px); }
       .page-title-bar .theme-toggle { right: 0px; }
     }
     
@@ -432,11 +432,15 @@
     }
     img, video, canvas { max-width: 100%; height: auto; display: block; }
     #shotPreview .editor-grid { overflow-x: hidden; }
+
+    .page-title {
+      font-size: clamp(16px, 4vw, 24px);
+    }
   </style>
 </head>
 <body>
   <div class="page-title-bar">
-    <div>
+    <div class="page-title">
       <h1>違規檢舉小幫手</h1>
     </div>
     <!-- 顯示在畫面最右上角的主題切換開關 -->
