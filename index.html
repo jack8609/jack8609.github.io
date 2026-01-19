@@ -637,6 +637,145 @@
       ro.observe(rail);
     }
 
+    /** =========================
+     * 違規紀錄編輯器（命名空間版）
+     * ========================= */
+    function initViolationEditor(root) {
+      root.innerHTML = `
+        <div class="violation-editor">
+          <div class="toolbar" role="group" aria-label="違規資料輸入區">
+            <div class="group">
+              <label for="ve-plate1">車牌號碼：</label>
+              <div class="plate-boxes">
+                <input id="ve-plate1" type="text" inputmode="latin" maxlength="4" placeholder="ABCD" aria-label="車牌前段（最多 4 英數字）" />
+                <span class="dash">—</span>
+                <input id="ve-plate2" type="text" inputmode="latin" maxlength="4" placeholder="1234" aria-label="車牌後段（最多 4 英數字）" />
+              </div>
+            </div>
+    
+            <!-- 違規項目 -->
+            <div class="group full">
+              <label for="ve-violation">違規項目：</label>
+              <div class="violation-row" style="display:flex; gap:8px; align-items:center; min-width:0; flex:1 1 auto;">
+                <select id="city-select" aria-label="選擇縣市"></select>
+                <select id="ve-violation" aria-label="選擇違規項目"></select>
+              </div>
+            </div>
+            <div class="group">
+              <label for="ve-date">違規日期：</label>
+              <input id="ve-date" type="date" />
+            </div>
+            <div class="group">
+              <label for="ve-hour">違規時間：</label>
+              <div class="time-selects" aria-label="違規時間">
+                <select id="ve-hour" aria-label="小時"></select>
+                <select id="ve-minute" aria-label="分鐘"></select>
+              </div>
+            </div>
+            <div class="group full">
+              <label for="ve-road">路段：</label>
+              <input id="ve-road" type="text" style="min-width: 240px; flex: 1 1 auto;"
+                     value="違規地址" placeholder="請在此填寫違規地址" aria-label="請在此填寫違規地址" />
+            </div>
+          </div>
+
+          <div class="preview" aria-live="polite">
+            <textarea id="ve-output" spellcheck="false"></textarea>
+            <div class="control-row">
+              <label><input type="checkbox" id="ve-pause"> 暫停自動更新</label>
+              <button class="btn" id="ve-copy" type="button" aria-label="複製到剪貼簿">複製到剪貼簿</button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      const $ = (sel) => root.querySelector(sel);
+      function buildTimeOptions() {
+        const hSel = $('#ve-hour'); const mSel = $('#ve-minute');
+        hSel.innerHTML = ''; mSel.innerHTML = '';
+        for (let h = 0; h <= 23; h++) {
+          const opt = document.createElement('option'); opt.value = String(h).padStart(2, '0'); opt.textContent = opt.value; hSel.appendChild(opt);
+        }
+        for (let m = 0; m <= 59; m++) {
+          const opt = document.createElement('option'); opt.value = String(m).padStart(2, '0'); opt.textContent = opt.value; mSel.appendChild(opt);
+        }
+      }
+      function setDefaultDateTime() {
+        const now = new Date();
+        const yyyy = now.getFullYear();
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const dd = String(now.getDate()).padStart(2, '0');
+        $('#ve-date').value = `${yyyy}-${mm}-${dd}`;
+        const rounded = Math.round(now.getMinutes() / 10) * 10;
+        $('#ve-hour').value = String(now.getHours()).padStart(2, '0');
+        $('#ve-minute').value = String(rounded % 60).padStart(2, '0');
+      }
+      function sanitizePlate(el) {
+        el.addEventListener('input', () => {
+          const cleaned = el.value.replace(/[^0-9a-z]/gi, '').toUpperCase().slice(0, 4);
+          if (cleaned !== el.value) el.value = cleaned;
+          updateOutput();
+        });
+        el.addEventListener('change', updateOutput);
+      }
+      function formatDateToYMD(dateStr) {
+        if (!dateStr) return '';
+        const d = new Date(dateStr + 'T00:00:00'); if (isNaN(d.getTime())) return '';
+        const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0');
+        return `${y}/${m}/${day}`;
+      }
+      function buildText() {
+        const p1 = ($('#ve-plate1').value || '');
+        const p2 = ($('#ve-plate2').value || '');
+        const plate = (p1 || p2) ? `${p1}${p1 && p2 ? '-' : ''}${p2}` : '（車號未填）';
+        const d = formatDateToYMD($('#ve-date').value);
+        const hh = $('#ve-hour').value || '00';
+        const min = $('#ve-minute').value || '00';
+        const dt = d ? `${d} ${hh}:${min}` : '（日期/時間未填）';
+        const road = ($('#ve-road').value || '').trim() || '請在此填寫違規地址';
+        const vioSel = $('#ve-violation'); const vio = vioSel.value || '（尚未選擇違規項目）';
+        return `${dt}，車號: ${plate} 於 "${road}"，${vio}。`;
+      }
+
+      function updateOutput() {
+        if ($('#ve-pause').checked) return;
+        $('#ve-output').value = buildText();
+      }
+
+      function bindEvents() {
+        ['#ve-date','#ve-hour','#ve-minute','#ve-violation','#ve-road'].forEach(sel => {
+          root.querySelector(sel).addEventListener('input', updateOutput);
+          root.querySelector(sel).addEventListener('change', updateOutput);
+        });
+        $('#ve-pause').addEventListener('change', function () { if (!this.checked) updateOutput(); });
+        $('#ve-copy').addEventListener('click', async () => {
+          const text = $('#ve-output').value;
+          try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              await navigator.clipboard.writeText(text); toast('已複製到剪貼簿');
+            } else {
+              const ta = $('#ve-output'); ta.select(); document.execCommand('copy'); toast('已複製到剪貼簿'); ta.setSelectionRange(ta.value.length, ta.value.length);
+            }
+          } catch (e) { alert('複製失敗，請手動選取後按 Ctrl+C。'); }
+        });
+      }
+      (function init() {
+        buildTimeOptions();
+        setDefaultDateTime();
+        sanitizePlate($('#ve-plate1'));
+        sanitizePlate($('#ve-plate2'));
+        bindEvents();
+        updateOutput();
+      })();
+    }
+    const veMount = document.getElementById('violation-editor-root');
+    if (veMount) initViolationEditor(veMount);
+    
+    // 在違規編輯器 DOM 建好之後，初始化下拉資料
+    if (window.initViolationDropdowns) {
+      window.initViolationDropdowns();
+    }
+
     /********** FFmpeg 本地載入（classic worker + wasmBinary） **********/
     const BASE = new URL('.', import.meta.url);
     const CORE_JS   = new URL('./core/ffmpeg-core.js', BASE).href;
@@ -740,6 +879,27 @@
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
 
+    // 小工具：用一次 exec('-i input.ts') 的 log 來判斷 video codec（不轉碼、很快）
+    async function detectTsVideoCodec(ffmpeg, inName) {
+      return new Promise(async (resolve) => {
+        let videoCodec = null;
+        const handler = ({ message }) => {
+          // 典型行例如： "Video: hevc (Main) ..." / "Video: h264 (High) ..."
+          const m = typeof message === 'string' && message.match(/Video:\s*([a-zA-Z0-9_]+)/);
+          if (m) videoCodec = m[1].toLowerCase();
+        };
+        ffmpeg.on && ffmpeg.on('log', handler);
+        try {
+          // 輕探測。-hide_banner 只為少點雜訊；失敗也沒關係（我們只要 log）
+          await ffmpeg.exec(['-hide_banner', '-i', inName]).catch(() => {});
+        } finally {
+          // 簡單移除監聽（若你的 FFmpeg.on 無 off，可忽略）
+          // ffmpeg.off && ffmpeg.off('log', handler);
+          resolve(videoCodec); // 可能為 null（解析不到時）
+        }
+      });
+    }
+
     // ✅ 快照 URL 追蹤與釋放
     let lastSnapshotURL = null;
     fileInput.onchange = async () => {
@@ -770,25 +930,37 @@
         if (isTS) {
           const inName = 'input.ts';
           const outName = 'automp4.mp4';
-
           await ffmpeg.writeFile(inName, await fileToUint8Array(file));
+          // 先探測 TS 視訊編碼
+          const vCodec = await detectTsVideoCodec(ffmpeg, inName);
+          const tagMap = {
+            h264: 'avc1',
+            avc:  'avc1',
+            hevc: 'hvc1',
+            h265: 'hvc1'
+          };
+          const tag = tagMap[vCodec];
+          if (!tag) {
+            fileInfo.textContent = `不支援的 TS 格式：${vCodec || '未知'}`;
+            return;
+          }
           FfmpegArgs[1] = inName;
+          FfmpegArgs[5] = tag;  // 套用正確的 tag
           FfmpegArgs[FfmpegArgs.length - 1] = outName;
-          log('偵測到 TS 檔案自動重封裝為 MP4…', FfmpegArgs);
+          log('偵測到 TS，執行快速轉換容器為 MP4…', FfmpegArgs);
           await ffmpeg.exec(FfmpegArgs);
-
           const data = await ffmpeg.readFile(outName);
           autoMp4Blob = new Blob([data.buffer], { type: 'video/mp4' });
           playableBlob = autoMp4Blob;
           playableName = 'input.mp4';
           autoMp4Url   = URL.createObjectURL(autoMp4Blob);
           currentObjectURL = autoMp4Url;
-          fileInfo.textContent = `已選擇：${file.name}(${(file.size/1024/1024).toFixed(2)} MB) | 已自動轉為 MP4 預覽`;
-
-          // ✅ 清理 FFmpeg 虛擬檔案
+          fileInfo.textContent = `已選擇：${file.name}(${(file.size/1024/1024).toFixed(2)} MB) | 自動重封裝為 MP4`;
+          // 清理 FFmpeg 虛擬檔案
           try { await ffmpeg.deleteFile?.(inName); } catch {}
           try { await ffmpeg.deleteFile?.(outName); } catch {}
         } else {
+          // 原本邏輯：非 TS 直接預覽
           playableBlob = file;
           playableName = inferInputName(file.name);
           autoMp4Blob  = null; autoMp4Url = '';
@@ -1032,145 +1204,6 @@
         alert('擷取縮圖失敗：' + (e?.message || e));
       }
     };
-
-    /** =========================
-     * 違規紀錄編輯器（命名空間版）
-     * ========================= */
-    function initViolationEditor(root) {
-      root.innerHTML = `
-        <div class="violation-editor">
-          <div class="toolbar" role="group" aria-label="違規資料輸入區">
-            <div class="group">
-              <label for="ve-plate1">車牌號碼：</label>
-              <div class="plate-boxes">
-                <input id="ve-plate1" type="text" inputmode="latin" maxlength="4" placeholder="ABCD" aria-label="車牌前段（最多 4 英數字）" />
-                <span class="dash">—</span>
-                <input id="ve-plate2" type="text" inputmode="latin" maxlength="4" placeholder="1234" aria-label="車牌後段（最多 4 英數字）" />
-              </div>
-            </div>
-    
-            <!-- 違規項目 -->
-            <div class="group full">
-              <label for="ve-violation">違規項目：</label>
-              <div class="violation-row" style="display:flex; gap:8px; align-items:center; min-width:0; flex:1 1 auto;">
-                <select id="city-select" aria-label="選擇縣市"></select>
-                <select id="ve-violation" aria-label="選擇違規項目"></select>
-              </div>
-            </div>
-            <div class="group">
-              <label for="ve-date">違規日期：</label>
-              <input id="ve-date" type="date" />
-            </div>
-            <div class="group">
-              <label for="ve-hour">違規時間：</label>
-              <div class="time-selects" aria-label="違規時間">
-                <select id="ve-hour" aria-label="小時"></select>
-                <select id="ve-minute" aria-label="分鐘"></select>
-              </div>
-            </div>
-            <div class="group full">
-              <label for="ve-road">路段：</label>
-              <input id="ve-road" type="text" style="min-width: 240px; flex: 1 1 auto;"
-                     value="違規地址" placeholder="請在此填寫違規地址" aria-label="請在此填寫違規地址" />
-            </div>
-          </div>
-
-          <div class="preview" aria-live="polite">
-            <textarea id="ve-output" spellcheck="false"></textarea>
-            <div class="control-row">
-              <label><input type="checkbox" id="ve-pause"> 暫停自動更新</label>
-              <button class="btn" id="ve-copy" type="button" aria-label="複製到剪貼簿">複製到剪貼簿</button>
-            </div>
-          </div>
-        </div>
-      `;
-
-      const $ = (sel) => root.querySelector(sel);
-      function buildTimeOptions() {
-        const hSel = $('#ve-hour'); const mSel = $('#ve-minute');
-        hSel.innerHTML = ''; mSel.innerHTML = '';
-        for (let h = 0; h <= 23; h++) {
-          const opt = document.createElement('option'); opt.value = String(h).padStart(2, '0'); opt.textContent = opt.value; hSel.appendChild(opt);
-        }
-        for (let m = 0; m <= 59; m++) {
-          const opt = document.createElement('option'); opt.value = String(m).padStart(2, '0'); opt.textContent = opt.value; mSel.appendChild(opt);
-        }
-      }
-      function setDefaultDateTime() {
-        const now = new Date();
-        const yyyy = now.getFullYear();
-        const mm = String(now.getMonth() + 1).padStart(2, '0');
-        const dd = String(now.getDate()).padStart(2, '0');
-        $('#ve-date').value = `${yyyy}-${mm}-${dd}`;
-        const rounded = Math.round(now.getMinutes() / 10) * 10;
-        $('#ve-hour').value = String(now.getHours()).padStart(2, '0');
-        $('#ve-minute').value = String(rounded % 60).padStart(2, '0');
-      }
-      function sanitizePlate(el) {
-        el.addEventListener('input', () => {
-          const cleaned = el.value.replace(/[^0-9a-z]/gi, '').toUpperCase().slice(0, 4);
-          if (cleaned !== el.value) el.value = cleaned;
-          updateOutput();
-        });
-        el.addEventListener('change', updateOutput);
-      }
-      function formatDateToYMD(dateStr) {
-        if (!dateStr) return '';
-        const d = new Date(dateStr + 'T00:00:00'); if (isNaN(d.getTime())) return '';
-        const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0');
-        return `${y}/${m}/${day}`;
-      }
-      function buildText() {
-        const p1 = ($('#ve-plate1').value || '');
-        const p2 = ($('#ve-plate2').value || '');
-        const plate = (p1 || p2) ? `${p1}${p1 && p2 ? '-' : ''}${p2}` : '（車號未填）';
-        const d = formatDateToYMD($('#ve-date').value);
-        const hh = $('#ve-hour').value || '00';
-        const min = $('#ve-minute').value || '00';
-        const dt = d ? `${d} ${hh}:${min}` : '（日期/時間未填）';
-        const road = ($('#ve-road').value || '').trim() || '請在此填寫違規地址';
-        const vioSel = $('#ve-violation'); const vio = vioSel.value || '（尚未選擇違規項目）';
-        return `${dt}，車號: ${plate} 於 "${road}"，${vio}。`;
-      }
-
-      function updateOutput() {
-        if ($('#ve-pause').checked) return;
-        $('#ve-output').value = buildText();
-      }
-
-      function bindEvents() {
-        ['#ve-date','#ve-hour','#ve-minute','#ve-violation','#ve-road'].forEach(sel => {
-          root.querySelector(sel).addEventListener('input', updateOutput);
-          root.querySelector(sel).addEventListener('change', updateOutput);
-        });
-        $('#ve-pause').addEventListener('change', function () { if (!this.checked) updateOutput(); });
-        $('#ve-copy').addEventListener('click', async () => {
-          const text = $('#ve-output').value;
-          try {
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-              await navigator.clipboard.writeText(text); toast('已複製到剪貼簿');
-            } else {
-              const ta = $('#ve-output'); ta.select(); document.execCommand('copy'); toast('已複製到剪貼簿'); ta.setSelectionRange(ta.value.length, ta.value.length);
-            }
-          } catch (e) { alert('複製失敗，請手動選取後按 Ctrl+C。'); }
-        });
-      }
-      (function init() {
-        buildTimeOptions();
-        setDefaultDateTime();
-        sanitizePlate($('#ve-plate1'));
-        sanitizePlate($('#ve-plate2'));
-        bindEvents();
-        updateOutput();
-      })();
-    }
-    const veMount = document.getElementById('violation-editor-root');
-    if (veMount) initViolationEditor(veMount);
-    
-    // 在違規編輯器 DOM 建好之後，初始化下拉資料
-    if (window.initViolationDropdowns) {
-      window.initViolationDropdowns();
-    }
 
     /*** === EditorLite 模組（最小整合到 #shotPreview）=== ***/
     (function ensureEditorLiteStyles() {
