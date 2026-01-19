@@ -1299,6 +1299,14 @@
       document.head.appendChild(style);
     })();
 
+    function isIOSMobile() {
+      const ua = navigator.userAgent || '';
+      const iOSClassic = /iPhone|iPod/.test(ua);
+      const iPadOS = (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      const iPadClassic = /iPad/.test(ua);
+      return iOSClassic || iPadOS || iPadClassic;
+    }
+
     // ================= EditorLite 主體 =================
     const EditorLite = (() => {
       let initialized = false;
@@ -1425,26 +1433,27 @@
         const rh3 = document.createElement('h3');
         rh3.textContent = '截圖列表';
 
+        // 全部清除
         const clearAllBtn = document.createElement('button');
         clearAllBtn.textContent = '全部清除';
         clearAllBtn.className = 'remove-btn';
         clearAllBtn.style.whiteSpace = 'nowrap';
-        
-        // 綁定清除全部事件（下方會定義 clearAllGenerated）
         clearAllBtn.onclick = clearAllGenerated;
 
+        // 全部下載
         const downloadAllBtn = document.createElement('button');
         downloadAllBtn.textContent = '全部下載';
         downloadAllBtn.className = 'download-btn';
         downloadAllBtn.style.whiteSpace = 'nowrap';
-        
-        // 綁定下載全部事件
         downloadAllBtn.onclick = DownloadIndividually;
+
         const btnGroup = document.createElement('div');
         btnGroup.style.display = 'flex';
         btnGroup.style.gap = '8px';
         btnGroup.append(clearAllBtn, downloadAllBtn);
-        
+        if(isIOSMobile()) {
+          downloadAllBtn.style.display = 'none';
+        }
         headerBar.append(rh3, btnGroup)
         
         // 既有的列表容器
