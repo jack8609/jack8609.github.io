@@ -1,5 +1,4 @@
-
-// ffmpeg/index.js
+// ffmpeg/index.js — 與上面的 worker.js 配對
 export class FFmpeg {
   constructor() {
     this._worker = null;
@@ -22,19 +21,18 @@ export class FFmpeg {
       throw new Error('load() 需要 coreURL / wasmURL / workerURL');
     }
 
-    // ✅ 一定用 classic worker（不要 type:"module"）
-    const w = new Worker(workerURL); 
+    // ✅ 使用 classic worker
+    const w = new Worker(workerURL);
     this._worker = w;
 
     w.onmessage = (ev) => {
       const { type, id, data } = ev.data || {};
       if (type === 'ready') {
-        // worker 一開始就會回 ready
+        // worker 會在 init 成功後發一次 'ready'
         return;
       }
       if (type === 'event') {
-        // log / progress
-        const { evt, payload } = data;
+        const { evt, payload } = data || {};
         this._emit(evt, payload);
         return;
       }
@@ -42,16 +40,16 @@ export class FFmpeg {
         const p = this._pending.get(id);
         if (p) {
           this._pending.delete(id);
-          if (data?.error) p.reject(data.error);
+          if (data && data.error) p.reject(data.error);
           else p.resolve(data.result);
         }
       }
     };
     w.onerror = (e) => {
-      console.error('[FFmpeg worker] error:', e.message);
+      console.error('[FFmpeg worker] error:', e.message || e);
     };
 
-    // 啟動 worker，傳入核心 URL
+    // 啟動 worker
     const ok = await this._call('init', { coreURL, wasmURL });
     if (!ok) throw new Error('failed to import ffmpeg-core.js');
   }
@@ -62,14 +60,14 @@ export class FFmpeg {
 
   async readFile(path) {
     const res = await this._call('readFile', { path });
-    return new Uint8Array(res); // 以 Uint8Array 返回
+    return new Uint8Array(res);
   }
 
   async exec(args) {
     return this._call('exec', { args });
   }
 
-  // ====== 內部封裝：request/response ======
+  // ===== 內部：request/response =====
   _call(cmd, payload, opts = {}) {
     if (!this._worker) throw new Error('worker not loaded');
     const id = ++this._reqId;
