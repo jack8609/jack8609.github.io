@@ -11,6 +11,18 @@
   <!-- 避免 favicon 404 -->
   <link rel="icon" href="data:," />
 
+  <script>
+    (function() {
+      var savedTime = localStorage.getItem('user_agreed_timestamp');
+      var timeout = 2592000000;
+      if (savedTime && (Date.now() - parseInt(savedTime) < timeout)) {
+        document.documentElement.classList.add('hide-warning-overlay');
+      } else {
+        localStorage.removeItem('user_agreed_timestamp');
+      }
+    })();
+  </script>
+
   <style>
     /* =========================================================
        Base & Theme Variables
@@ -497,6 +509,55 @@
     .page-title {
       font-size: clamp(16px, 4vw, 24px);
     }
+  
+    .hide-warning-overlay #warning-overlay { display: none !important; }
+
+    #warning-overlay {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0, 0, 0, 0.9) !important; /* 加深背景確保注意力 */
+      display: flex; justify-content: center; align-items: center;
+      z-index: 999999; padding: 15px; box-sizing: border-box;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    #warning-overlay .modal-content {
+      background: #ffffff !important; 
+      width: 100%; max-width: 450px;
+      padding: 25px; border-radius: 16px;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+      display: flex; flex-direction: column;
+      max-height: 85vh;
+      border: none !important;
+    }
+
+    #warning-overlay .locked-text, 
+    #warning-overlay .locked-text p, 
+    #warning-overlay .locked-text span,
+    #warning-overlay .locked-text strong,
+    #warning-overlay h2 {
+      color: #1a1a1a !important; 
+      text-shadow: none !important;
+      background: transparent !important;
+      -webkit-text-fill-color: #1a1a1a !important;
+    }
+
+    #warning-scroll-box {
+      overflow-y: auto; margin: 15px 0; padding: 15px;
+      background: #f8f9fa !important; border-radius: 10px;
+      border: 1px solid #eee !important;
+    }
+    #warning-scroll-box::-webkit-scrollbar { width: 5px; }
+    #warning-scroll-box::-webkit-scrollbar-thumb { background: #ccc; border-radius: 10px; }
+
+    #btn-confirm-action {
+      background: #27ae60 !important; color: #ffffff !important;
+      border: none !important; padding: 15px; border-radius: 10px;
+      font-size: 1.1rem; font-weight: bold; cursor: pointer;
+      transition: all 0.3s;
+    }
+    #btn-confirm-action:disabled {
+      background: #e0e0e0 !important; color: #999 !important; cursor: not-allowed;
+    }
   </style>
 </head>
 <body>
@@ -609,10 +670,37 @@
     const btnDownloadFull = document.getElementById('btnDownloadFull');
     const btnThumbnail    = document.getElementById('btnThumbnail');
     const shotPreviewBox  = document.getElementById('shotPreview');
+    const overlay         = document.getElementById('warning-overlay');
+    const scrollBox       = document.getElementById('warning-scroll-box');
+    const checkbox        = document.getElementById('no-show-again');
+    const btn             = document.getElementById('btn-confirm-action');
+    const storageKey      = 'user_agreed_timestamp';
 
     toggleLog.addEventListener('change', () => {
       logPanel.classList.toggle('show', toggleLog.checked);
     });
+
+    scrollBox.addEventListener('scroll', () => {
+      const isBottom = scrollBox.scrollHeight - scrollBox.scrollTop <= scrollBox.clientHeight + 10;
+      if (isBottom) {
+        btn.disabled = false;
+        btn.innerText = "我已了解並確定";
+      }
+    });
+
+    const handleAccept = () => {
+      if (btn.disabled) return;
+      if (checkbox && checkbox.checked) {
+        localStorage.setItem(storageKey, Date.now().toString());
+        document.documentElement.classList.add('hide-warning-overlay');
+      }
+      overlay.style.opacity = '0';
+      overlay.style.transition = 'opacity 0.3s ease';
+      setTimeout(() => {
+        overlay.style.display = 'none';
+      }, 300);
+    };
+    btn.addEventListener('click', handleAccept);
 
     /********** 主題切換（深色 / 明亮） **********/
     (function setupThemeToggle() {
@@ -2512,5 +2600,42 @@
     <a href="https://github.com/FFmpeg/FFmpeg" target="_blank">https://github.com/FFmpeg/FFmpeg</a><br>
     本網站未修改 FFmpeg 核心，僅透過 WebAssembly 作為函式庫使用。
   </footer>
+
+  <div id="warning-overlay">
+    <div class="modal-content">
+      <h2 class="locked-text" style="text-align: center; margin: 0 0 15px 0;">⚠️ 必讀聲明</h2>
+      <p style="text-align: center; color: #888; font-size: 12px;">--- 請捲動到底部以解鎖按鈕 ---</p>
+        <div id="warning-scroll-box">
+          <div class="locked-text" style="font-size: 14px; line-height: 1.6;">
+            <p>歡迎使用。在開始揮霍您的才華前，請先閱讀這份比泡麵時間還短的聲明：</p>
+            <p><strong>1. 免費萬歲：</strong> 這是一個免費軟體。在這個連呼吸都要錢的年代，開發者堅持不收您一毛錢。</p>
+            <p><strong>2. 巨人肩膀：</strong> 核心採用 <strong>FFmpeg (LGPL 授權)</strong>。我們尊重開源，也請您尊重。</p>
+            <p><strong>3. 隱私絕對：</strong> 影片與圖片處理都在您 <strong>本地機器</strong> 完成。如果您沒讓隔壁鄰居看您的螢幕，就沒人知道您在弄什麼。</p>
+            <p><strong>4. 我很邊緣：</strong> 本站為獨立開發，無任何官方合作。被騙請別找我，我們不熟。</p>
+            <p><strong>5. 禁止壞壞：</strong> 嚴禁挪用於非法事務。若您決定做壞事，那是您的選擇，與開發者毫無關係。</p>
+            <p><strong>6. 關於臭蟲：</strong> 本網站由 <strong>開發者與 AI 協同開發</strong>。開發者很忙，不歡迎回報問題，等哪天有閒情逸致了，再考慮看要不要修理。</p>
+            <p><strong>7. 正義紅線：</strong> 這是便利的檢舉影像剪輯工具。<strong>切勿將其當作惡意報復、栽贓之工具。</strong></p>
+            <hr style="border: 0; border-top: 1px solid #ddd; margin: 15px 0;">
+              <div style="text-align: center;">
+                <p style="color: #d9534f !important; font-weight: bold; margin-bottom: 10px;">⚠️ 最終警告：</p>
+                <p style="margin-bottom: 15px;">若您利用本站工具進行惡意檢舉或騷擾無辜大眾，<br>開發者在此對您施予以下詛咒：</p>
+                <div style="background: #fff0f0; padding: 15px; border-radius: 8px; border: 1px dashed #d9534f; display: inline-block; width: 100%; box-sizing: border-box;">
+                <p style="color: #d9534f !important; font-size: 16px !important; font-weight: bold !important; margin: 0; line-height: 2;">
+                  有網有格連不上，滿格上網宿靈訴；<br>
+                  通勤塞車都遲到，車輛故障修不好；<br>
+                  步步踩屎噴滿臉，如廁紙盡淚千行！
+                </p>
+                </div>
+                <p style="color: #d9534f !important; font-size: 22px !important; font-weight: 900 !important; margin: 15px 0; letter-spacing: 2px;">處、處、遇、麻、煩</p>
+              </div>
+          </div>
+        </div>
+        <label class="locked-text" style="display: flex; align-items: center; justify-content: center; margin-bottom: 20px; cursor: pointer;">
+          <input type="checkbox" id="no-show-again" style="width: 18px; height: 18px; margin-right: 10px; accent-color: #27ae60;">
+          <span style="font-size: 14px;">同意並不再顯示 30 天</span>
+        </label>
+        <button id="btn-confirm-action" disabled>請完整閱讀完警語</button>
+    </div>
+  </div>
 </body>
 </html>
