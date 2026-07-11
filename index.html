@@ -256,7 +256,25 @@
     .violation-editor #ve-plate1, .violation-editor #ve-plate2 { width: 80px; }
     .violation-editor .plate-boxes { display: inline-flex; gap: 8px; align-items: center; min-width: 0; }
     .violation-editor .dash { color: var(--muted-fg); user-select: none; }
-    
+
+    /* 車牌自動辨識（實驗性功能）核取方塊 */
+    .violation-editor .auto-ocr-toggle {
+      display: inline-flex; align-items: center; gap: 4px; font-size: 13px;
+      color: var(--muted-fg); white-space: nowrap; cursor: help; user-select: none;
+    }
+    .violation-editor .auto-ocr-toggle input[type="checkbox"] { cursor: pointer; }
+
+    /* 車牌辨識引擎下載進度面板 */
+    #plate-ocr-progress-panel {
+      position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+      background: var(--panel); color: var(--fg); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 14px; z-index: 9999; min-width: 260px;
+      max-width: 90vw; font-size: 13px; box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+    }
+    #plate-ocr-progress-panel .label { margin-bottom: 6px; color: var(--fg); }
+    #plate-ocr-progress-panel progress { width: 100%; height: 8px; accent-color: var(--accent-color); }
+    #plate-ocr-progress-panel .detail { margin-top: 4px; color: var(--muted-fg); font-size: 12px; }
+
     /* 時間下拉 */
     .violation-editor .time-selects { display: inline-flex; gap: 8px; align-items: center; min-width: 0; }
     .violation-editor .time-selects select { min-width: 80px; }
@@ -779,6 +797,158 @@
       ro.observe(rail);
     }
 
+    // 提前宣告（在 initViolationEditor 之前）：restore checkbox 狀態的同步邏輯會在 init() 立即執行，
+    // 若宣告在後面會落入 TDZ 而被 try/catch 悄悄吞掉，導致重新整理後核取方塊狀態還原失敗。
+    const PLATE_OCR_ENABLED_KEY = 've_auto_ocr_enabled';
+
+    /** =========================
+     * PlateOCR 車牌辨識（實驗性功能，延遲載入）
+     * ========================= */
+    const PLATE_OCR_SCRIPTS = [
+      { url: './tesseract/tesseract.min.js', label: 'OCR 文字辨識引擎' },
+      { url: './opencv/opencv.min.js',       label: '影像校正引擎（檔案較大，請耐心等候）' },
+      { url: './plate-ocr/plate-ocr.js',     label: '車牌辨識模組' },
+    ];
+    let plateOcrLibsPromise = null;
+    let ocrBusy = false;
+
+    function fmtBytes(n) {
+      if (!n && n !== 0) return '未知大小';
+      if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+      return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+    }
+
+    function getOcrProgressPanel() {
+      let panel = document.getElementById('plate-ocr-progress-panel');
+      if (!panel) {
+        panel = document.createElement('div');
+        panel.id = 'plate-ocr-progress-panel';
+        panel.innerHTML = `
+          <div class="label"></div>
+          <progress max="100" value="0"></progress>
+          <div class="detail"></div>
+        `;
+        document.body.appendChild(panel);
+      }
+      return panel;
+    }
+
+    function updateOcrProgressPanel(labelText, loaded, total) {
+      const panel = getOcrProgressPanel();
+      panel.querySelector('.label').textContent = labelText;
+      const progressEl = panel.querySelector('progress');
+      const detailEl = panel.querySelector('.detail');
+      if (total > 0) {
+        progressEl.removeAttribute('indeterminate');
+        progressEl.value = Math.min(100, Math.round((loaded / total) * 100));
+        detailEl.textContent = `${fmtBytes(loaded)} / ${fmtBytes(total)}`;
+      } else {
+        progressEl.removeAttribute('value');
+        detailEl.textContent = `已下載 ${fmtBytes(loaded)}（檔案大小未知）`;
+      }
+    }
+
+    function removeOcrProgressPanel() {
+      const panel = document.getElementById('plate-ocr-progress-panel');
+      if (panel) panel.remove();
+    }
+
+    // 以 fetch 串流下載並回報進度，完成後回傳可執行的程式碼 Blob。
+    async function fetchScriptWithProgress(url, label) {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`下載失敗：${url}（HTTP ${res.status}）`);
+      const total = Number(res.headers.get('content-length')) || 0;
+      if (!res.body || !res.body.getReader) {
+        // 瀏覽器不支援串流讀取，退回一次性下載（無進度顯示）。
+        updateOcrProgressPanel(label, 0, 0);
+        const blob = await res.blob();
+        return blob;
+      }
+      const reader = res.body.getReader();
+      const chunks = [];
+      let received = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        received += value.length;
+        updateOcrProgressPanel(label, received, total);
+      }
+      return new Blob(chunks, { type: 'application/javascript' });
+    }
+
+    // 將下載好的程式碼 Blob 以 <script> 標籤實際執行（確保與一般 <script src> 語意相同）。
+    function execScriptBlob(blob) {
+      return new Promise((resolve, reject) => {
+        const blobUrl = URL.createObjectURL(blob);
+        const s = document.createElement('script');
+        s.src = blobUrl;
+        s.onload = () => { URL.revokeObjectURL(blobUrl); resolve(); };
+        s.onerror = () => { URL.revokeObjectURL(blobUrl); reject(new Error('腳本執行失敗：' + blobUrl)); };
+        document.head.appendChild(s);
+      });
+    }
+
+    // 延遲載入 opencv.min.js / tesseract.min.js / plate-ocr.js（僅在使用者啟用車牌辨識時才下載）。
+    // 用 promise 快取，避免重複下載；失敗時清空快取以允許重試。
+    function loadPlateOcrLibs() {
+      if (typeof PlateOCR !== 'undefined') return Promise.resolve();
+      if (plateOcrLibsPromise) return plateOcrLibsPromise;
+      plateOcrLibsPromise = (async () => {
+        try {
+          for (let i = 0; i < PLATE_OCR_SCRIPTS.length; i++) {
+            const { url, label } = PLATE_OCR_SCRIPTS[i];
+            const stageLabel = `正在載入車牌辨識引擎 (${i + 1}/${PLATE_OCR_SCRIPTS.length})：${label}`;
+            updateOcrProgressPanel(stageLabel, 0, 0);
+            const blob = await fetchScriptWithProgress(url, stageLabel);
+            await execScriptBlob(blob);
+          }
+          removeOcrProgressPanel();
+          toast('車牌辨識引擎已就緒');
+        } catch (err) {
+          removeOcrProgressPanel();
+          console.error('PlateOCR 引擎載入失敗：', err);
+          toast('車牌辨識引擎載入失敗，請檢查網路連線');
+          plateOcrLibsPromise = null; // 允許之後重試
+          throw err;
+        }
+      })();
+      return plateOcrLibsPromise;
+    }
+
+    // 由 EditorLite 完成車牌裁切後呼叫：跑完整 PlateOCR pipeline 並回填車牌欄位。
+    async function triggerAutoPlateOCR(canvas) {
+      if (ocrBusy) { toast('上一次車牌辨識尚未完成，請稍候'); return; }
+      ocrBusy = true;
+      try {
+        toast('辨識車牌中...');
+        await loadPlateOcrLibs();
+        const blob = await new Promise((resolve, reject) => {
+          canvas.toBlob(b => b ? resolve(b) : reject(new Error('canvas.toBlob 失敗')), 'image/png');
+        });
+        const result = await PlateOCR.runPipeline(blob);
+        const plate1 = document.getElementById('ve-plate1');
+        const plate2 = document.getElementById('ve-plate2');
+        let filled = false;
+        if (result.left && plate1) {
+          plate1.value = result.left.slice(0, 4);
+          plate1.dispatchEvent(new Event('input', { bubbles: true }));
+          filled = true;
+        }
+        if (result.right && plate2) {
+          plate2.value = result.right.slice(0, 4);
+          plate2.dispatchEvent(new Event('input', { bubbles: true }));
+          filled = true;
+        }
+        toast(filled ? `車牌辨識完成：${result.left || ''}-${result.right || ''}（請核對）` : '車牌辨識結果空白，請手動輸入');
+      } catch (err) {
+        console.error('車牌自動辨識失敗：', err);
+        toast('車牌辨識失敗，請手動輸入');
+      } finally {
+        ocrBusy = false;
+      }
+    }
+
     /** =========================
      * 違規紀錄編輯器（命名空間版）
      * ========================= */
@@ -793,6 +963,10 @@
                 <span class="dash">—</span>
                 <input id="ve-plate2" type="text" inputmode="latin" maxlength="4" placeholder="1234" aria-label="車牌後段（最多 4 英數字）" />
               </div>
+              <label class="auto-ocr-toggle" for="ve-auto-ocr" title="⚠️ 實驗性功能：車牌自動辨識準確度有限，請務必自行核對填寫的車牌號碼是否正確。">
+                <input type="checkbox" id="ve-auto-ocr" aria-label="自動辨識車牌（實驗性功能，請自行核對辨識結果）" />
+                自動辨識車牌
+              </label>
             </div>
     
             <!-- 違規項目 -->
@@ -900,6 +1074,10 @@
             }
           } catch (e) { alert('複製失敗，請手動選取後按 Ctrl+C。'); }
         });
+        $('#ve-auto-ocr').addEventListener('change', function () {
+          try { localStorage.setItem(PLATE_OCR_ENABLED_KEY, this.checked ? '1' : '0'); } catch (e) {}
+          if (this.checked) { loadPlateOcrLibs().catch(() => {}); }
+        });
       }
       (function init() {
         buildTimeOptions();
@@ -908,6 +1086,14 @@
         sanitizePlate($('#ve-plate2'));
         bindEvents();
         updateOutput();
+
+        // 還原「自動辨識車牌」上次的勾選狀態；若曾經開啟，背景預熱下載（仍會顯示進度面板，保持透明）。
+        let autoOcrRestored = false;
+        try { autoOcrRestored = localStorage.getItem(PLATE_OCR_ENABLED_KEY) === '1'; } catch (e) {}
+        if (autoOcrRestored) {
+          $('#ve-auto-ocr').checked = true;
+          setTimeout(() => { loadPlateOcrLibs().catch(() => {}); }, 0);
+        }
       })();
     }
     const veMount = document.getElementById('violation-editor-root');
@@ -2045,6 +2231,12 @@
             setOverlayInteractive(true);
             setTool(lastNonPlateTool || 'shape');
           };
+
+          // 若使用者已勾選「自動辨識車牌」，裁切完成後立即觸發 PlateOCR 辨識並回填車牌欄位。
+          const autoOcrEl = document.getElementById('ve-auto-ocr');
+          if (autoOcrEl && autoOcrEl.checked && typeof triggerAutoPlateOCR === 'function') {
+            triggerAutoPlateOCR(c);
+          }
         } catch (e) {
           console.error('裁切失敗：', e);
         }
