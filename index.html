@@ -668,42 +668,78 @@
 
   <script type="module">
     /********** 基本 UI **********/
-    const statusEl   = document.getElementById('status');
-    const logEl      = document.getElementById('log');
-    const btnCopyLog = document.getElementById('btnCopyLog');
-    const logPanel   = document.getElementById('logPanel');
-    const toggleLog  = document.getElementById('toggleLog');
-    const fileInput  = document.getElementById('file');
-    const fileInfo   = document.getElementById('fileInfo');
-    const preview    = document.getElementById('preview');
-    const curEl      = document.getElementById('cur');
-    const durEl      = document.getElementById('dur');
-    const rail       = document.getElementById('rail');
-    const selectionEl= document.getElementById('selection');
-    const startRange = document.getElementById('startRange');
-    const endRange   = document.getElementById('endRange');
-    const startLabel = document.getElementById('startLabel');
-    const endLabel   = document.getElementById('endLabel');
-    const btnClip         = document.getElementById('btnClip');
-    const btnDownloadFull = document.getElementById('btnDownloadFull');
-    const btnThumbnail    = document.getElementById('btnThumbnail');
-    const shotPreviewBox  = document.getElementById('shotPreview');
-    const overlay         = document.getElementById('warning-overlay');
-    const scrollBox       = document.getElementById('warning-scroll-box');
-    const checkbox        = document.getElementById('no-show-again');
-    const btn             = document.getElementById('btn-confirm-action');
-    const storageKey      = 'user_agreed_timestamp';
+    const ViolationHelper = window.ViolationHelper = {
+      dom: {
+        statusEl: document.getElementById('status'),
+        logEl: document.getElementById('log'),
+        btnCopyLog: document.getElementById('btnCopyLog'),
+        logPanel: document.getElementById('logPanel'),
+        toggleLog: document.getElementById('toggleLog'),
+        fileInput: document.getElementById('file'),
+        fileInfo: document.getElementById('fileInfo'),
+        preview: document.getElementById('preview'),
+        curEl: document.getElementById('cur'),
+        durEl: document.getElementById('dur'),
+        rail: document.getElementById('rail'),
+        selectionEl: document.getElementById('selection'),
+        startRange: document.getElementById('startRange'),
+        endRange: document.getElementById('endRange'),
+        startLabel: document.getElementById('startLabel'),
+        endLabel: document.getElementById('endLabel'),
+        btnClip: document.getElementById('btnClip'),
+        btnDownloadFull: document.getElementById('btnDownloadFull'),
+        btnThumbnail: document.getElementById('btnThumbnail'),
+        shotPreviewBox: document.getElementById('shotPreview'),
+        overlay: document.getElementById('warning-overlay'),
+        scrollBox: document.getElementById('warning-scroll-box'),
+        checkbox: document.getElementById('no-show-again'),
+        btn: document.getElementById('btn-confirm-action'),
+        themeSwitch: document.getElementById('themeSwitch'),
+        themeLabel: document.getElementById('themeLabel'),
+        violationEditorRoot: document.getElementById('violation-editor-root')
+      },
+      config: {
+        storageKeys: {
+          disclaimerAcceptedAt: 'user_agreed_timestamp',
+          theme: 'app-theme',
+          autoPlateOcrEnabled: 've_auto_ocr_enabled'
+        },
+        ocrScripts: [
+          { url: './tesseract/tesseract.min.js', label: 'OCR 文字辨識引擎' },
+          { url: './opencv/opencv.min.js', label: '影像校正引擎（檔案較大，請耐心等候）' },
+          { url: './plate-ocr/plate-ocr.js', label: '車牌辨識模組' }
+        ]
+      },
+      state: {
+        ui: { theme: null, isLogVisible: false, isDisclaimerDismissed: false },
+        video: {
+          selectedFileRaw: null,
+          playableBlob: null,
+          playableName: '',
+          autoMp4Blob: null,
+          autoMp4Url: '',
+          currentObjectURL: '',
+          lastSnapshotURL: null
+        },
+        ffmpeg: { ctor: null, instance: null, isReady: false, error: null },
+        ocr: { libsPromise: null, isBusy: false, isAutoEnabled: false }
+      },
+      services: {},
+      modules: {},
+      utils: {}
+    };
+    const { config, state, services, modules, utils } = ViolationHelper;
+    const {
+      statusEl, logEl, btnCopyLog, logPanel, toggleLog, fileInput, fileInfo,
+      preview, curEl, durEl, rail, selectionEl, startRange, endRange,
+      startLabel, endLabel, btnClip, btnDownloadFull, btnThumbnail,
+      shotPreviewBox, overlay, scrollBox, checkbox, btn
+    } = ViolationHelper.dom;
+    const storageKey = ViolationHelper.config.storageKeys.disclaimerAcceptedAt;
 
     toggleLog.addEventListener('change', () => {
       logPanel.classList.toggle('show', toggleLog.checked);
-    });
-
-    scrollBox.addEventListener('scroll', () => {
-      const isBottom = scrollBox.scrollHeight - scrollBox.scrollTop <= scrollBox.clientHeight + 10;
-      if (isBottom) {
-        btn.disabled = false;
-        btn.innerText = "我已了解並確定";
-      }
+      state.ui.isLogVisible = toggleLog.checked;
     });
 
     const handleAccept = () => {
@@ -716,29 +752,39 @@
       overlay.style.transition = 'opacity 0.3s ease';
       setTimeout(() => {
         overlay.style.display = 'none';
+        state.ui.isDisclaimerDismissed = true;
       }, 300);
     };
-    btn.addEventListener('click', handleAccept);
+    if (overlay && scrollBox && btn) {
+      scrollBox.addEventListener('scroll', () => {
+        const isBottom = scrollBox.scrollHeight - scrollBox.scrollTop <= scrollBox.clientHeight + 10;
+        if (isBottom) {
+          btn.disabled = false;
+          btn.innerText = "我已了解並確定";
+        }
+      });
+      btn.addEventListener('click', handleAccept);
+    }
 
     /********** 主題切換（深色 / 明亮） **********/
     (function setupThemeToggle() {
       const html = document.documentElement;
-      const sw = document.getElementById('themeSwitch');
-      const lbl = document.getElementById('themeLabel');
+      const sw = ViolationHelper.dom.themeSwitch;
+      const lbl = ViolationHelper.dom.themeLabel;
       if (!sw || !lbl) return;
 
       // 根據 localStorage 或系統偏好初始化
-      const LS_KEY = 'app-theme';
+      const LS_KEY = config.storageKeys.theme;
       const saved = localStorage.getItem(LS_KEY); // 'dark' | 'light' | null
       const sysPrefersLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
 
-      let theme = saved || (sysPrefersLight ? 'light' : 'dark');
-      applyTheme(theme);
+      state.ui.theme = saved || (sysPrefersLight ? 'light' : 'dark');
+      applyTheme(state.ui.theme);
 
       // 切換事件
       sw.addEventListener('change', () => {
-        theme = sw.checked ? 'light' : 'dark';
-        applyTheme(theme, true);
+        state.ui.theme = sw.checked ? 'light' : 'dark';
+        applyTheme(state.ui.theme, true);
       });
 
       // 套用主題並記錄
@@ -771,6 +817,7 @@
       const s = t % 60;
       return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${s.toFixed(2).padStart(5,'0')}`;
     };
+    Object.assign(utils, { log, errlog, fmt });
     btnCopyLog.addEventListener('click', async () => {
       const text = logEl.textContent || '';
       try {
@@ -799,19 +846,11 @@
 
     // 提前宣告（在 initViolationEditor 之前）：restore checkbox 狀態的同步邏輯會在 init() 立即執行，
     // 若宣告在後面會落入 TDZ 而被 try/catch 悄悄吞掉，導致重新整理後核取方塊狀態還原失敗。
-    const PLATE_OCR_ENABLED_KEY = 've_auto_ocr_enabled';
+    const PLATE_OCR_ENABLED_KEY = config.storageKeys.autoPlateOcrEnabled;
 
     /** =========================
      * PlateOCR 車牌辨識（實驗性功能，延遲載入）
      * ========================= */
-    const PLATE_OCR_SCRIPTS = [
-      { url: './tesseract/tesseract.min.js', label: 'OCR 文字辨識引擎' },
-      { url: './opencv/opencv.min.js',       label: '影像校正引擎（檔案較大，請耐心等候）' },
-      { url: './plate-ocr/plate-ocr.js',     label: '車牌辨識模組' },
-    ];
-    let plateOcrLibsPromise = null;
-    let ocrBusy = false;
-
     function fmtBytes(n) {
       if (!n && n !== 0) return '未知大小';
       if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
@@ -893,12 +932,12 @@
     // 用 promise 快取，避免重複下載；失敗時清空快取以允許重試。
     function loadPlateOcrLibs() {
       if (typeof PlateOCR !== 'undefined') return Promise.resolve();
-      if (plateOcrLibsPromise) return plateOcrLibsPromise;
-      plateOcrLibsPromise = (async () => {
+      if (state.ocr.libsPromise) return state.ocr.libsPromise;
+      state.ocr.libsPromise = (async () => {
         try {
-          for (let i = 0; i < PLATE_OCR_SCRIPTS.length; i++) {
-            const { url, label } = PLATE_OCR_SCRIPTS[i];
-            const stageLabel = `正在載入車牌辨識引擎 (${i + 1}/${PLATE_OCR_SCRIPTS.length})：${label}`;
+          for (let i = 0; i < config.ocrScripts.length; i++) {
+            const { url, label } = config.ocrScripts[i];
+            const stageLabel = `正在載入車牌辨識引擎 (${i + 1}/${config.ocrScripts.length})：${label}`;
             updateOcrProgressPanel(stageLabel, 0, 0);
             const blob = await fetchScriptWithProgress(url, stageLabel);
             await execScriptBlob(blob);
@@ -909,17 +948,17 @@
           removeOcrProgressPanel();
           console.error('PlateOCR 引擎載入失敗：', err);
           toast('車牌辨識引擎載入失敗，請檢查網路連線');
-          plateOcrLibsPromise = null; // 允許之後重試
+          state.ocr.libsPromise = null; // 允許之後重試
           throw err;
         }
       })();
-      return plateOcrLibsPromise;
+      return state.ocr.libsPromise;
     }
 
     // 由 EditorLite 完成車牌裁切後呼叫：跑完整 PlateOCR pipeline 並回填車牌欄位。
     async function triggerAutoPlateOCR(canvas) {
-      if (ocrBusy) { toast('上一次車牌辨識尚未完成，請稍候'); return; }
-      ocrBusy = true;
+      if (state.ocr.isBusy) { toast('上一次車牌辨識尚未完成，請稍候'); return; }
+      state.ocr.isBusy = true;
       try {
         toast('辨識車牌中...');
         await loadPlateOcrLibs();
@@ -945,9 +984,10 @@
         console.error('車牌自動辨識失敗：', err);
         toast('車牌辨識失敗，請手動輸入');
       } finally {
-        ocrBusy = false;
+        state.ocr.isBusy = false;
       }
     }
+    services.ocr = { load: loadPlateOcrLibs, recognize: triggerAutoPlateOCR };
 
     /** =========================
      * 違規紀錄編輯器（命名空間版）
@@ -1076,7 +1116,8 @@
         });
         $('#ve-auto-ocr').addEventListener('change', function () {
           try { localStorage.setItem(PLATE_OCR_ENABLED_KEY, this.checked ? '1' : '0'); } catch (e) {}
-          if (this.checked) { loadPlateOcrLibs().catch(() => {}); }
+          state.ocr.isAutoEnabled = this.checked;
+          if (this.checked) { services.ocr.load().catch(() => {}); }
         });
       }
       (function init() {
@@ -1092,12 +1133,14 @@
         try { autoOcrRestored = localStorage.getItem(PLATE_OCR_ENABLED_KEY) === '1'; } catch (e) {}
         if (autoOcrRestored) {
           $('#ve-auto-ocr').checked = true;
-          setTimeout(() => { loadPlateOcrLibs().catch(() => {}); }, 0);
+          state.ocr.isAutoEnabled = true;
+          setTimeout(() => { services.ocr.load().catch(() => {}); }, 0);
         }
       })();
     }
-    const veMount = document.getElementById('violation-editor-root');
+    const veMount = ViolationHelper.dom.violationEditorRoot;
     if (veMount) initViolationEditor(veMount);
+    modules.violationEditor = { init: initViolationEditor };
     
     // 在違規編輯器 DOM 建好之後，初始化下拉資料
     if (window.initViolationDropdowns) {
@@ -1105,21 +1148,23 @@
     }
 
     /********** FFmpeg 本地載入（classic worker + wasmBinary） **********/
-    const BASE = new URL('.', import.meta.url);
-    const CORE_JS   = new URL('./core/ffmpeg-core.js', BASE).href;
-    const CORE_WASM = new URL('./core/ffmpeg-core.wasm', BASE).href;
-    const WORKER_JS = new URL('./ffmpeg/worker.js', BASE).href;
+    const baseURL = new URL('.', import.meta.url);
+    config.ffmpeg = {
+      coreURL: new URL('./core/ffmpeg-core.js', baseURL).href,
+      wasmURL: new URL('./core/ffmpeg-core.wasm', baseURL).href,
+      workerURL: new URL('./ffmpeg/worker.js', baseURL).href,
+      remuxArgs: ['-i', 'inputfile', '-c', 'copy', '-tag:v', 'hvc1', '-bsf:a', 'aac_adtstoasc', '-movflags', '+faststart', 'automp4.mp4']
+    };
 
-    const fileToUint8Array = async (fileOrBlob) => new Uint8Array(await fileOrBlob.arrayBuffer());
+    utils.fileToUint8Array = async (fileOrBlob) => new Uint8Array(await fileOrBlob.arrayBuffer());
 
     // 匯入你本地的 FFmpeg ESM 入口
-    let FFmpegCtor;
-    let ffmpeg;
     try {
       const mod = await import('./ffmpeg/index.js');
-      FFmpegCtor = mod.FFmpeg || mod.default;
+      state.ffmpeg.ctor = mod.FFmpeg || mod.default;
     } catch (e) {
       statusEl.textContent = '狀態：載入 FFmpeg 入口失敗 ❌';
+      state.ffmpeg.error = e;
       errlog('無法 import ./ffmpeg/index.js：', e?.message || e);
     }
 
@@ -1139,21 +1184,28 @@
         statusEl.textContent = '狀態：等待 Service Worker 就緒…';
         await waitSWReady(5000);
         log('crossOriginIsolated =', String(self.crossOriginIsolated));
-        ffmpeg = new FFmpegCtor();
-        if (ffmpeg?.on) {
-          ffmpeg.on('log', ({ message }) => log('[ffmpeg]', message));
-          ffmpeg.on('progress', (p) => log('[progress]', JSON.stringify(p)));
+        state.ffmpeg.instance = new state.ffmpeg.ctor();
+        if (state.ffmpeg.instance?.on) {
+          state.ffmpeg.instance.on('log', ({ message }) => log('[ffmpeg]', message));
+          state.ffmpeg.instance.on('progress', (p) => log('[progress]', JSON.stringify(p)));
         }
         statusEl.textContent = '狀態：正在載入 FFmpeg…（首次載入較慢）';
-        await ffmpeg.load({ coreURL: CORE_JS, wasmURL: CORE_WASM, workerURL: WORKER_JS });
+        await state.ffmpeg.instance.load({
+          coreURL: config.ffmpeg.coreURL,
+          wasmURL: config.ffmpeg.wasmURL,
+          workerURL: config.ffmpeg.workerURL
+        });
+        state.ffmpeg.isReady = true;
         statusEl.textContent = `狀態：FFmpeg 載入完成 ✅`;
         log('FFmpeg 已就緒。');
         setActionsEnabled(false);
       } catch (err) {
+        state.ffmpeg.error = err;
         statusEl.textContent = `狀態：載入失敗 ❌ ${err?.message || err}`;
         errlog('初始化失敗：', err?.stack || err);
       }
     };
+    services.ffmpeg = { start: startFFmpeg, get instance() { return state.ffmpeg.instance; } };
 
     await startFFmpeg();
 
@@ -1166,16 +1218,9 @@
       });
       div.textContent = msg; document.body.appendChild(div); setTimeout(() => div.remove(), 1200);
     }
+    utils.toast = toast;
 
     /********** 檔案狀態（TS → 自動重封裝 MP4） **********/
-    let selectedFileRaw = null;
-    let playableBlob    = null;
-    let playableName    = '';
-    let autoMp4Blob     = null;
-    let autoMp4Url      = '';
-    let currentObjectURL = '';
-    let FfmpegArgs = ['-i', 'inputfile', '-c', 'copy', '-tag:v', 'hvc1', '-bsf:a', 'aac_adtstoasc', '-movflags', '+faststart', 'automp4.mp4'];
-
     function revokeURL(url) { try { if (url) URL.revokeObjectURL(url); } catch {} }
     function setActionsEnabled(enabled) {
       btnClip.disabled = !enabled;
@@ -1206,6 +1251,7 @@
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
+    Object.assign(utils, { revokeURL, setActionsEnabled, resetClipUI, triggerDownloadFromBlob });
 
     // 小工具：用一次 exec('-i input.ts') 的 log 來判斷 video codec（不轉碼、很快）
     async function detectTsVideoCodec(ffmpeg, inName) {
@@ -1229,20 +1275,19 @@
     }
 
     // ✅ 快照 URL 追蹤與釋放
-    let lastSnapshotURL = null;
     fileInput.onchange = async () => {
       const file = fileInput.files?.[0];
       // 清理快照 URL
-      if (lastSnapshotURL) { URL.revokeObjectURL(lastSnapshotURL); lastSnapshotURL = null; }
+      if (state.video.lastSnapshotURL) { URL.revokeObjectURL(state.video.lastSnapshotURL); state.video.lastSnapshotURL = null; }
 
-      revokeURL(currentObjectURL); currentObjectURL = '';
-      if (!(EditorLite.isReady && EditorLite.isReady())) {
+      revokeURL(state.video.currentObjectURL); state.video.currentObjectURL = '';
+      if (!(modules.editorLite?.isReady && modules.editorLite.isReady())) {
         shotPreviewBox.innerHTML = '<span class="hint">尚未擷取縮圖</span>';
       }
 
       if (!file) {
-        selectedFileRaw = null; playableBlob = null; playableName = '';
-        autoMp4Blob = null; autoMp4Url = '';
+        state.video.selectedFileRaw = null; state.video.playableBlob = null; state.video.playableName = '';
+        state.video.autoMp4Blob = null; state.video.autoMp4Url = '';
         setActionsEnabled(false);
         preview.removeAttribute('src'); preview.load();
         fileInfo.textContent = '請選擇影片（支援 .mp4 / .ts / .mov 等）';
@@ -1250,7 +1295,7 @@
         return;
       }
 
-      selectedFileRaw = file;
+      state.video.selectedFileRaw = file;
       const lower = (file.name || '').toLowerCase();
       const isTS = lower.endsWith('.ts');
 
@@ -1258,9 +1303,9 @@
         if (isTS) {
           const inName = 'input.ts';
           const outName = 'automp4.mp4';
-          await ffmpeg.writeFile(inName, await fileToUint8Array(file));
+          await state.ffmpeg.instance.writeFile(inName, await utils.fileToUint8Array(file));
           // 先探測 TS 視訊編碼
-          const vCodec = await detectTsVideoCodec(ffmpeg, inName);
+          const vCodec = await detectTsVideoCodec(state.ffmpeg.instance, inName);
           const tagMap = {
             h264: 'avc1',
             avc:  'avc1',
@@ -1272,30 +1317,30 @@
             fileInfo.textContent = `不支援的 TS 格式：${vCodec || '未知'}`;
             return;
           }
-          FfmpegArgs[1] = inName;
-          FfmpegArgs[5] = tag;  // 套用正確的 tag
-          FfmpegArgs[FfmpegArgs.length - 1] = outName;
-          log('偵測到 TS，執行快速轉換容器為 MP4…', FfmpegArgs);
-          await ffmpeg.exec(FfmpegArgs);
-          const data = await ffmpeg.readFile(outName);
-          autoMp4Blob = new Blob([data.buffer], { type: 'video/mp4' });
-          playableBlob = autoMp4Blob;
-          playableName = 'input.mp4';
-          autoMp4Url   = URL.createObjectURL(autoMp4Blob);
-          currentObjectURL = autoMp4Url;
+          config.ffmpeg.remuxArgs[1] = inName;
+          config.ffmpeg.remuxArgs[5] = tag;  // 套用正確的 tag
+          config.ffmpeg.remuxArgs[config.ffmpeg.remuxArgs.length - 1] = outName;
+          log('偵測到 TS，執行快速轉換容器為 MP4…', config.ffmpeg.remuxArgs);
+          await state.ffmpeg.instance.exec(config.ffmpeg.remuxArgs);
+          const data = await state.ffmpeg.instance.readFile(outName);
+          state.video.autoMp4Blob = new Blob([data.buffer], { type: 'video/mp4' });
+          state.video.playableBlob = state.video.autoMp4Blob;
+          state.video.playableName = 'input.mp4';
+          state.video.autoMp4Url = URL.createObjectURL(state.video.autoMp4Blob);
+          state.video.currentObjectURL = state.video.autoMp4Url;
           fileInfo.textContent = `已選擇：${file.name}(${(file.size/1024/1024).toFixed(2)} MB) | 自動重封裝為 MP4`;
           // 清理 FFmpeg 虛擬檔案
-          try { await ffmpeg.deleteFile?.(inName); } catch {}
-          try { await ffmpeg.deleteFile?.(outName); } catch {}
+          try { await state.ffmpeg.instance.deleteFile?.(inName); } catch {}
+          try { await state.ffmpeg.instance.deleteFile?.(outName); } catch {}
         } else {
           // 原本邏輯：非 TS 直接預覽
-          playableBlob = file;
-          playableName = inferInputName(file.name);
-          autoMp4Blob  = null; autoMp4Url = '';
-          currentObjectURL = URL.createObjectURL(file);
+          state.video.playableBlob = file;
+          state.video.playableName = inferInputName(file.name);
+          state.video.autoMp4Blob = null; state.video.autoMp4Url = '';
+          state.video.currentObjectURL = URL.createObjectURL(file);
           fileInfo.textContent = `已選擇：${file.name}(${(file.size/1024/1024).toFixed(2)} MB)`;
         }
-        preview.src = currentObjectURL;
+        preview.src = state.video.currentObjectURL;
         preview.load();
         setActionsEnabled(true);
       } catch (e) {
@@ -1356,6 +1401,7 @@
     startRange.addEventListener('input', () => clampAndPreview('start'));
     endRange.addEventListener('input',   () => clampAndPreview('end'));
     window.addEventListener('resize', updateSelectionBar);
+    services.timeline = { updateSelectionBar, clampAndPreview, resetClipUI };
 
     /********** 輔助：推斷輸入檔名（容器名）**********/
     function inferInputName(name) {
@@ -1367,29 +1413,30 @@
       if (lower.endsWith('.mp3')) return 'input.mp3';
       return 'input.mp4';
     }
+    utils.inferInputName = inferInputName;
 
     /********** 功能 1：剪輯並輸出（不重編碼，-c copy）→ 直接下載 **********/
     btnClip.onclick = async () => {
       try {
-        if (!playableBlob) { alert('請先選擇檔案'); return; }
+        if (!state.video.playableBlob) { alert('請先選擇檔案'); return; }
 
         const s = parseFloat(startRange.value);
         const e = parseFloat(endRange.value);
         if (!isFinite(s) || !isFinite(e)) { alert('請設定開始與結束時間'); return; }
         if (e <= s) { alert('結束時間必須大於開始時間'); return; }
 
-        const inName = playableName || 'input.mp4';
+        const inName = state.video.playableName || 'input.mp4';
         const outName = 'clip.mp4';
 
         log('開始快速剪輯（無轉碼）…', { start: s, end: e, inName, outName });
-        await ffmpeg.writeFile(inName, await fileToUint8Array(playableBlob));
+        await state.ffmpeg.instance.writeFile(inName, await utils.fileToUint8Array(state.video.playableBlob));
 
         const ss = s.toFixed(2);
         const to = e.toFixed(2);
         // 精準（較慢）：-ss 在 -i 之後
-        await ffmpeg.exec(['-i', inName, '-ss', ss, '-to', to, '-c', 'copy', outName]);
+        await state.ffmpeg.instance.exec(['-i', inName, '-ss', ss, '-to', to, '-c', 'copy', outName]);
 
-        const data = await ffmpeg.readFile(outName);
+        const data = await state.ffmpeg.instance.readFile(outName);
         const blob = new Blob([data.buffer], { type: 'video/mp4' });
         triggerDownloadFromBlob(blob, outName);
         toast(`已下載剪輯檔 (${ss}s → ${to}s)`);
@@ -1399,10 +1446,10 @@
         alert('剪輯失敗：' + (e?.message || e));
       } finally {
         // 清理暫存檔案
-        try { await ffmpeg.deleteFile?.('clip.mp4'); } catch {}
+        try { await state.ffmpeg.instance.deleteFile?.('clip.mp4'); } catch {}
         try {
-          const inName = playableName || 'input.mp4';
-          await ffmpeg.deleteFile?.(inName);
+          const inName = state.video.playableName || 'input.mp4';
+          await state.ffmpeg.instance.deleteFile?.(inName);
         } catch {}
       }
     };
@@ -1410,42 +1457,42 @@
     /********** 功能 2：下載完整轉檔 **********/
     btnDownloadFull.onclick = async () => {
       try {
-        if (!selectedFileRaw) { alert("請先選擇檔案"); return; }
+        if (!state.video.selectedFileRaw) { alert("請先選擇檔案"); return; }
 
-        const lower = (selectedFileRaw.name || '').toLowerCase();
+        const lower = (state.video.selectedFileRaw.name || '').toLowerCase();
         const isTS = lower.endsWith('.ts');
 
         if (isTS) {
-          if (autoMp4Blob) {
-            triggerDownloadFromBlob(autoMp4Blob, 'converted.mp4');
+          if (state.video.autoMp4Blob) {
+            triggerDownloadFromBlob(state.video.autoMp4Blob, 'converted.mp4');
             toast('已下載自動轉檔 MP4');
             log('TS 已自動轉檔完成，觸發下載 converted.mp4 ✅');
             return;
           }
           const inName = 'input.ts';
           const outName = 'automp4.mp4';
-          await ffmpeg.writeFile(inName, await fileToUint8Array(selectedFileRaw));
-          FfmpegArgs[1] = inName;
-          FfmpegArgs[FfmpegArgs.length - 1] = outName;
-          await ffmpeg.exec(FfmpegArgs);
-          const data = await ffmpeg.readFile(outName);
+          await state.ffmpeg.instance.writeFile(inName, await utils.fileToUint8Array(state.video.selectedFileRaw));
+          config.ffmpeg.remuxArgs[1] = inName;
+          config.ffmpeg.remuxArgs[config.ffmpeg.remuxArgs.length - 1] = outName;
+          await state.ffmpeg.instance.exec(config.ffmpeg.remuxArgs);
+          const data = await state.ffmpeg.instance.readFile(outName);
           const blob = new Blob([data.buffer], { type: 'video/mp4' });
           triggerDownloadFromBlob(blob, 'converted.mp4');
           toast('已下載自動轉檔 MP4');
           log('TS 重新自動轉檔後觸發下載 ✅');
-          try { await ffmpeg.deleteFile?.(inName); } catch {}
-          try { await ffmpeg.deleteFile?.(outName); } catch {}
+          try { await state.ffmpeg.instance.deleteFile?.(inName); } catch {}
+          try { await state.ffmpeg.instance.deleteFile?.(outName); } catch {}
         } else {
-          const inName = inferInputName(selectedFileRaw.name);
-          await ffmpeg.writeFile(inName, await fileToUint8Array(selectedFileRaw));
-          await ffmpeg.exec(['-i', inName, '-movflags', 'faststart', 'output.mp4']);
-          const data = await ffmpeg.readFile('output.mp4');
+          const inName = inferInputName(state.video.selectedFileRaw.name);
+          await state.ffmpeg.instance.writeFile(inName, await utils.fileToUint8Array(state.video.selectedFileRaw));
+          await state.ffmpeg.instance.exec(['-i', inName, '-movflags', 'faststart', 'output.mp4']);
+          const data = await state.ffmpeg.instance.readFile('output.mp4');
           const blob = new Blob([data.buffer], { type: 'video/mp4' });
           triggerDownloadFromBlob(blob, 'output.mp4');
           toast('已下載自動轉檔 MP4');
           log('完整轉檔完成並已觸發下載 ✅');
-          try { await ffmpeg.deleteFile?.(inName); } catch {}
-          try { await ffmpeg.deleteFile?.('output.mp4'); } catch {}
+          try { await state.ffmpeg.instance.deleteFile?.(inName); } catch {}
+          try { await state.ffmpeg.instance.deleteFile?.('output.mp4'); } catch {}
         }
       } catch (e) {
         errlog('完整轉檔失敗：', e?.message || e);
@@ -1456,7 +1503,7 @@
     /********** 功能 3：擷取縮圖 **********/
     btnThumbnail.onclick = async () => {
       try {
-        if (!(EditorLite.isReady && EditorLite.isReady())) {
+        if (!(modules.editorLite?.isReady && modules.editorLite.isReady())) {
           shotPreviewBox.innerHTML = '<span class="hint">擷取中…</span>';
         }
     
@@ -1500,13 +1547,13 @@
         const url = URL.createObjectURL(blob);
 
         // 釋放上一張快照 URL
-        if (lastSnapshotURL && lastSnapshotURL !== url) {
-          URL.revokeObjectURL(lastSnapshotURL);
+        if (state.video.lastSnapshotURL && state.video.lastSnapshotURL !== url) {
+          URL.revokeObjectURL(state.video.lastSnapshotURL);
         }
-        lastSnapshotURL = url;
+        state.video.lastSnapshotURL = url;
 
         // 顯示到你保留的 #shotPreview（不新增任何外部節點/屬性）
-        if (!(EditorLite.isReady && EditorLite.isReady())) {
+        if (!(modules.editorLite?.isReady && modules.editorLite.isReady())) {
           shotPreviewBox.innerHTML = '';
           const img = document.createElement('img');
           img.src = url;
@@ -1519,12 +1566,12 @@
         log('Canvas 擷取完成 ✅', { currentTime: ss, width: w, height: h });
 
         // 初始化或僅換底圖（避免重建 UI 造成狀態不同步）
-        if (EditorLite.isReady && EditorLite.isReady()) {
+        if (modules.editorLite?.isReady && modules.editorLite.isReady()) {
           // 已經初始化過僅換底圖
-          EditorLite.loadSnapshot(url);
+          modules.editorLite.loadSnapshot(url);
         } else {
           // 第一次初始化
-          EditorLite.init(shotPreviewBox, { videoEl: preview, snapshotURL: url });
+          modules.editorLite.init(shotPreviewBox, { videoEl: preview, snapshotURL: url });
         }
       } catch (e) {
         shotPreviewBox.innerHTML = '<span class="hint">尚未擷取縮圖</span>';
@@ -1636,7 +1683,7 @@
     }
 
     // ================= EditorLite 主體 =================
-    const EditorLite = (() => {
+    modules.editorLite = (() => {
       /* ===== Module-scope Variables ===== */
       let initialized = false;
       let container = null;
@@ -2234,8 +2281,8 @@
 
           // 若使用者已勾選「自動辨識車牌」，裁切完成後立即觸發 PlateOCR 辨識並回填車牌欄位。
           const autoOcrEl = document.getElementById('ve-auto-ocr');
-          if (autoOcrEl && autoOcrEl.checked && typeof triggerAutoPlateOCR === 'function') {
-            triggerAutoPlateOCR(c);
+          if (autoOcrEl && autoOcrEl.checked && services.ocr?.recognize) {
+            services.ocr.recognize(c);
           }
         } catch (e) {
           console.error('裁切失敗：', e);
