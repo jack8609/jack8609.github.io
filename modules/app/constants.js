@@ -9,6 +9,11 @@ export function initializeConfig() {
   config.ocrScripts = [
     { url: './tesseract/tesseract.min.js', label: 'OCR 文字辨識引擎' },
     { url: './opencv/opencv.min.js', label: '影像校正引擎（檔案較大，請耐心等候）' },
+    { url: './plate-ocr/plate-corner-detector/utils.js', label: '車牌辨識模組' },
+    { url: './plate-ocr/plate-corner-detector/detectors/classic-pipeline.js', label: '車牌辨識模組' },
+    { url: './plate-ocr/plate-corner-detector/detectors/contour-fallback.js', label: '車牌辨識模組' },
+    { url: './plate-ocr/plate-corner-detector/detectors/edge-scan.js', label: '車牌辨識模組' },
+    { url: './plate-ocr/plate-corner-detector/core.js', label: '車牌辨識模組' },
     { url: './plate-ocr/plate-ocr.js', label: '車牌辨識模組' }
   ];
   config.ffmpeg = {

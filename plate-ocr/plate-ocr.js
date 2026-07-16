@@ -2,9 +2,15 @@
 
 /* =========================================================================
  * PlateOCR - 車牌校正與辨識核心模組（從 Tesseract POC 專案移植版）
- * 依賴：全域 window.cv (OpenCV.js, @techstark/opencv-js) 與全域 Tesseract (Tesseract.js v5+)
+ * 依賴：全域 window.cv (OpenCV.js, @techstark/opencv-js)、全域 Tesseract (Tesseract.js v5+)
+ *       與先載入的全域 PlateCornerDetector
  * 用法：<script src="tesseract.min.js"></script>
  *       <script src="opencv.min.js" defer></script>
+ *       <script src="plate-corner-detector/utils.js"></script>
+ *       <script src="plate-corner-detector/detectors/classic-pipeline.js"></script>
+ *       <script src="plate-corner-detector/detectors/contour-fallback.js"></script>
+ *       <script src="plate-corner-detector/detectors/edge-scan.js"></script>
+ *       <script src="plate-corner-detector/core.js"></script>
  *       <script src="plate-ocr.js" defer></script>
  *       然後呼叫 await PlateOCR.runPipeline(file[, canvases, onLog])
  * 調參：PlateOCR.CONF.xxx = ...（所有參數集中在此，不要在函式內寫魔法數字）
@@ -20,9 +26,12 @@ const PlateOCR = (() => {
     cannyThreshold2: 150,            // Canny 邊緣偵測門檻 2
     edgeDilateKernelSize: [3, 3],    // 邊緣膨脹核心大小（用來連接斷邊，利於找輪廓）
     edgeDilateIterations: 1,         // 邊緣膨脹迭代次數
-    minContourAreaRatio: 0.1,        // 候選輪廓最小面積比例（相對於整張圖面積，僅影響主要四頂點搜尋）
+    minContourAreaRatio: 0.1,        // 舊調參名稱，映射為 classic/fallback 的最小候選面積比例
     approxPolyEpsilonRatio: 0.035,   // approxPolyDP 的 epsilon = ratio * 輪廓周長（放寬以容忍圓角/螺絲缺口）
     fallbackInsetRatio: 0.015,       // 安全兜底：找不到 4 頂點時，原圖四角向內收縮比例（調低以避免切到較靠邊緣的字元）
+    cornerDetectorStrategy: 'auto',  // PlateCornerDetector 策略：edge-scan → classic → fallback
+    cornerDetectorAspectRatioRange: [1.8, 3.2], // classic/fallback 車牌長寬比篩選範圍
+    cornerDetectorOptions: {},       // 額外傳給 PlateCornerDetector 的進階參數
     warpWidth: 440,                  // 透視校正目標寬度
     warpHeight: 140,                 // 透視校正目標高度
 
@@ -37,7 +46,7 @@ const PlateOCR = (() => {
 
     // 4. Tesseract OCR（整條辨識，供群組切割失敗時的 fallback 使用）
     tesseractLang: 'eng',
-    tesseractWhitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-',
+    tesseractWhitelist: '012356789ABCDEFGHJKLMNPQRSTUVWXYZ-',  // 台灣車牌沒有 4, I, O
     tesseractPSM: '7',               // SINGLE_LINE
 
     // 5. 群組切割（垂直投影）與雙重白名單辨識
@@ -47,8 +56,8 @@ const PlateOCR = (() => {
     groupMinSideWidthRatio: 0.15,        // 切割後左右兩側最小寬度（相對於 warpWidth），太窄視為切割失敗
     groupCropPaddingRatio: 0.02,         // 裁切子圖時左右各自保留的緩衝比例
     groupProjectionRowMarginRatio: 0.18, // 垂直投影計算時，排除上下各此比例的列（避開車牌外框線/螺絲孔造成的橫貫雜訊）
-    tesseractDigitWhitelist: '0123456789',
-    tesseractAlphaWhitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+    tesseractDigitWhitelist: '012356789',  // 台灣車牌沒有 4, I, O
+    tesseractAlphaWhitelist: 'ABCDEFGHJKLMNPQRSTUVWXYZ',
   };
 
   // ---- 0. Bootstrap：函式庫初始化 -----------------------------------------
@@ -91,79 +100,28 @@ const PlateOCR = (() => {
     }
   }
 
-  // ---- 內部工具：四頂點排序 (TL, TR, BR, BL) -------------------------------
-  function orderPoints(pts) {
-    const sum = pts.map(p => p.x + p.y);
-    const diff = pts.map(p => p.y - p.x);
-    const tl = pts[sum.indexOf(Math.min(...sum))];
-    const br = pts[sum.indexOf(Math.max(...sum))];
-    const tr = pts[diff.indexOf(Math.min(...diff))];
-    const bl = pts[diff.indexOf(Math.max(...diff))];
-    return [tl, tr, br, bl];
-  }
-
-  // ---- 1. 四角偵測（含安全兜底） -------------------------------------------
+  // ---- 1. 四角偵測（PlateCornerDetector 相容層，含安全兜底） -----------------
   function detectPlateCorners(srcMat, width, height) {
-    const gray = new cv.Mat();
-    cv.cvtColor(srcMat, gray, cv.COLOR_RGBA2GRAY);
-
-    const blurred = new cv.Mat();
-    cv.GaussianBlur(
-      gray, blurred,
-      new cv.Size(CONF.gaussianBlurKernel[0], CONF.gaussianBlurKernel[1]),
-      0
-    );
-
-    const edges = new cv.Mat();
-    cv.Canny(blurred, edges, CONF.cannyThreshold1, CONF.cannyThreshold2);
-
-    const dilateKernel = cv.getStructuringElement(
-      cv.MORPH_RECT,
-      new cv.Size(CONF.edgeDilateKernelSize[0], CONF.edgeDilateKernelSize[1])
-    );
-    const dilated = new cv.Mat();
-    cv.dilate(edges, dilated, dilateKernel, new cv.Point(-1, -1), CONF.edgeDilateIterations);
-
-    const contours = new cv.MatVector();
-    const hierarchy = new cv.Mat();
-    cv.findContours(dilated, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
-
-    const minArea = width * height * CONF.minContourAreaRatio;
-    const candidates = [];
-    for (let i = 0; i < contours.size(); i++) {
-      const cnt = contours.get(i);
-      const area = cv.contourArea(cnt);
-      if (area >= minArea) {
-        candidates.push({ cnt, area });
-      } else {
-        cnt.delete();
-      }
-    }
-    candidates.sort((a, b) => b.area - a.area);
-
-    let bestQuad = null;
-    for (const { cnt } of candidates) {
-      const peri = cv.arcLength(cnt, true);
-      const approx = new cv.Mat();
-      cv.approxPolyDP(cnt, approx, CONF.approxPolyEpsilonRatio * peri, true);
-      if (!bestQuad && approx.rows === 4 && cv.isContourConvex(approx)) {
-        const pts = [];
-        for (let r = 0; r < 4; r++) {
-          pts.push({ x: approx.data32S[r * 2], y: approx.data32S[r * 2 + 1] });
-        }
-        bestQuad = pts;
-      }
-      approx.delete();
-      cnt.delete();
+    const detector = window.PlateCornerDetector;
+    if (!detector || typeof detector.detect !== 'function') {
+      throw new Error('PlateCornerDetector 尚未載入；請先依文件順序載入 plate-corner-detector。');
     }
 
-    let usedFallback = false;
-    let ordered;
-    if (bestQuad) {
-      ordered = orderPoints(bestQuad);
-    } else {
-      // 安全兜底：找不到有效 4 頂點時，原圖四角向內收縮固定比例作為替代頂點。
-      usedFallback = true;
+    let detection;
+    try {
+      detection = detector.detect(srcMat, {
+        ...CONF.cornerDetectorOptions,
+        strategy: CONF.cornerDetectorStrategy,
+        aspectRatioRange: CONF.cornerDetectorAspectRatioRange,
+        minAreaRatio: CONF.minContourAreaRatio,
+      });
+    } catch (error) {
+      detection = { success: false, corners: null };
+    }
+
+    let usedFallback = !detection.success;
+    let ordered = detection.corners;
+    if (usedFallback) {
       const insetX = width * CONF.fallbackInsetRatio;
       const insetY = height * CONF.fallbackInsetRatio;
       ordered = [
@@ -189,12 +147,22 @@ const PlateOCR = (() => {
       cv.line(overlayMat, new cv.Point(p1.x, p1.y), new cv.Point(p2.x, p2.y), color, 3);
     }
 
-    gray.delete();
-    blurred.delete();
-    dilateKernel.delete();
-    dilated.delete();
-    contours.delete();
-    hierarchy.delete();
+    // 保持既有 edges canvas 輸出契約；此 Mat 僅供視覺化，不參與四角判定。
+    const gray = new cv.Mat();
+    const blurred = new cv.Mat();
+    const edges = new cv.Mat();
+    try {
+      cv.cvtColor(srcMat, gray, cv.COLOR_RGBA2GRAY);
+      cv.GaussianBlur(
+        gray, blurred,
+        new cv.Size(CONF.gaussianBlurKernel[0], CONF.gaussianBlurKernel[1]),
+        0
+      );
+      cv.Canny(blurred, edges, CONF.cannyThreshold1, CONF.cannyThreshold2);
+    } finally {
+      gray.delete();
+      blurred.delete();
+    }
 
     return { orderedCorners, overlayMat, edgesMat: edges, usedFallback };
   }
@@ -261,7 +229,7 @@ const PlateOCR = (() => {
       dst.ucharPtr(h - margin, w - margin)[0],
     ];
     const avgCorner = corners.reduce((a, b) => a + b, 0) / corners.length;
-    if (avgCorner < 128) {
+    if (avgCorner < 60) {  // 原始128 強制手動改為 60, 未來需要最佳化這段演算法
       cv.bitwise_not(dst, dst);
     }
     return dst;
