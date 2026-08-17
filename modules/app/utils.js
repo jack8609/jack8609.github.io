@@ -65,6 +65,24 @@ export function registerUtils() {
   };
   const fileToUint8Array = async (fileOrBlob) => new Uint8Array(await fileOrBlob.arrayBuffer());
 
+  const getPlateFromInputs = () => {
+    const plate1 = (document.getElementById('ve-plate1')?.value || '').trim();
+    const plate2 = (document.getElementById('ve-plate2')?.value || '').trim();
+    if (plate1 && plate2) return `${plate1}-${plate2}`;
+    return plate1 || plate2 || '';
+  };
+
+  // 移除檔名非法字元（使用者上傳檔名可能含 / \ : * ? " < > |）
+  const sanitizeFilenameComponent = (name) => (name || '').replace(/[\\/:*?"<>|]/g, '_');
+
+  const getBaseNameWithoutExt = (filename) => sanitizeFilenameComponent((filename || '').replace(/\.[^./\\]+$/, ''));
+
+  const toLocalTimestamp = (date) => {
+    const d = date instanceof Date ? date : new Date(date);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+  };
+
   Object.assign(utils, {
     fmt,
     revokeURL,
@@ -72,6 +90,9 @@ export function registerUtils() {
     resetClipUI,
     triggerDownloadFromBlob,
     inferInputName,
-    fileToUint8Array
+    fileToUint8Array,
+    getPlateFromInputs,
+    getBaseNameWithoutExt,
+    toLocalTimestamp
   });
 }

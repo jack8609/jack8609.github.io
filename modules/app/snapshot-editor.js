@@ -1,5 +1,13 @@
 export function createSnapshotEditor() {
-  const { services } = window.ViolationHelper;
+  const { services, utils } = window.ViolationHelper;
+
+  // 車牌優先命名：無車牌則沿用 report 前綴；時間戳一律採本機時間
+  function buildSnapshotFileName(ts, suffix) {
+    const plate = utils.getPlateFromInputs();
+    const prefix = plate || 'report';
+    const tsStr = utils.toLocalTimestamp(new Date(ts || Date.now()));
+    return suffix ? `${prefix}_${tsStr}_${suffix}.jpg` : `${prefix}_${tsStr}.jpg`;
+  }
 
     (function ensureEditorLiteStyles() {
       const id = 'editorlite-styles';
@@ -537,8 +545,7 @@ export function createSnapshotEditor() {
       function DownloadIndividually() {
         if (!generatedItems.length) { alert('目前沒有可下載的截圖'); return; }
         generatedItems.forEach((item, idx) => {
-          const ts = new Date(item.ts || Date.now()).toISOString().slice(0,19).replace(/[-:T]/g,'');
-          const fileName = `report_${ts}_${idx + 1}.jpg`;
+          const fileName = buildSnapshotFileName(item.ts, idx + 1);
           const a = document.createElement('a'); a.download = fileName; a.href = item.url;
           document.body.appendChild(a); a.click(); a.remove();
         });
@@ -562,7 +569,7 @@ export function createSnapshotEditor() {
         const btnRemove = document.createElement('button'); btnRemove.textContent = '移除'; btnRemove.className = 'remove-btn';
         const btnDownload = document.createElement('button'); btnDownload.textContent = '下載'; btnDownload.className = 'download-btn';
         const img = document.createElement('img'); img.src = url; img.id = id;
-        btnDownload.onclick = () => downloadImg(id, `report_${new Date(ts).toISOString().slice(0,19).replace(/[-:T]/g,'')}.jpg`);
+        btnDownload.onclick = () => downloadImg(id, buildSnapshotFileName(ts));
         btnRemove.onclick = () => removeGeneratedItem(id);
         img.addEventListener('click', () => showPreview(url));
         header.append(info, btnRow);

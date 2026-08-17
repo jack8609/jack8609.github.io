@@ -5,9 +5,19 @@ export function initializeVideoActions() {
     shotPreviewBox
   } = dom;
   const {
-    errlog, fileToUint8Array, inferInputName, log, revokeURL, setActionsEnabled, toast,
-    triggerDownloadFromBlob
+    errlog, fileToUint8Array, getBaseNameWithoutExt, getPlateFromInputs, inferInputName, log,
+    revokeURL, setActionsEnabled, toast, triggerDownloadFromBlob
   } = utils;
+
+  // 秒數轉 4 碼無分隔 MMSS（檔名不可用冒號）
+  const formatSecondsAsMMSS = (seconds) => {
+    const total = Math.max(0, Math.floor(seconds));
+    const mm = Math.floor(total / 60) % 100;
+    const ss = total % 60;
+    return `${String(mm).padStart(2, '0')}${String(ss).padStart(2, '0')}`;
+  };
+
+  const buildOriginalBaseName = () => getBaseNameWithoutExt(state.video.selectedFileRaw?.name || '');
     async function detectTsVideoCodec(ffmpeg, inName) {
       return new Promise(async (resolve) => {
         let videoCodec = null;
@@ -127,7 +137,11 @@ export function initializeVideoActions() {
 
         const data = await services.ffmpeg.instance.readFile(outName);
         const blob = new Blob([data.buffer], { type: 'video/mp4' });
-        triggerDownloadFromBlob(blob, outName);
+        const plate = getPlateFromInputs();
+        const downloadName = plate
+          ? `${plate}_${formatSecondsAsMMSS(s)}_${formatSecondsAsMMSS(e)}.mp4`
+          : `${buildOriginalBaseName()}_${formatSecondsAsMMSS(s)}_${formatSecondsAsMMSS(e)}.mp4`;
+        triggerDownloadFromBlob(blob, downloadName);
         toast(`已下載剪輯檔 (${ss}s → ${to}s)`);
         log('剪輯完成並已觸發下載 ✅');
       } catch (e) {
@@ -151,12 +165,14 @@ export function initializeVideoActions() {
 
         const lower = (state.video.selectedFileRaw.name || '').toLowerCase();
         const isTS = lower.endsWith('.ts');
+        const plate = getPlateFromInputs();
+        const downloadName = plate ? `${plate}.mp4` : `${buildOriginalBaseName()}_converted.mp4`;
 
         if (isTS) {
           if (state.video.autoMp4Blob) {
-            triggerDownloadFromBlob(state.video.autoMp4Blob, 'converted.mp4');
+            triggerDownloadFromBlob(state.video.autoMp4Blob, downloadName);
             toast('已下載自動轉檔 MP4');
-            log('TS 已自動轉檔完成，觸發下載 converted.mp4 ✅');
+            log('TS 已自動轉檔完成，觸發下載', downloadName);
             return;
           }
           const inName = 'input.ts';
@@ -167,9 +183,9 @@ export function initializeVideoActions() {
           await services.ffmpeg.instance.exec(config.ffmpeg.remuxArgs);
           const data = await services.ffmpeg.instance.readFile(outName);
           const blob = new Blob([data.buffer], { type: 'video/mp4' });
-          triggerDownloadFromBlob(blob, 'converted.mp4');
+          triggerDownloadFromBlob(blob, downloadName);
           toast('已下載自動轉檔 MP4');
-          log('TS 重新自動轉檔後觸發下載 ✅');
+          log('TS 重新自動轉檔後觸發下載', downloadName);
           try { await services.ffmpeg.instance.deleteFile?.(inName); } catch {}
           try { await services.ffmpeg.instance.deleteFile?.(outName); } catch {}
         } else {
@@ -178,9 +194,9 @@ export function initializeVideoActions() {
           await services.ffmpeg.instance.exec(['-i', inName, '-movflags', 'faststart', 'output.mp4']);
           const data = await services.ffmpeg.instance.readFile('output.mp4');
           const blob = new Blob([data.buffer], { type: 'video/mp4' });
-          triggerDownloadFromBlob(blob, 'output.mp4');
+          triggerDownloadFromBlob(blob, downloadName);
           toast('已下載自動轉檔 MP4');
-          log('完整轉檔完成並已觸發下載 ✅');
+          log('完整轉檔完成並已觸發下載', downloadName);
           try { await services.ffmpeg.instance.deleteFile?.(inName); } catch {}
           try { await services.ffmpeg.instance.deleteFile?.('output.mp4'); } catch {}
         }

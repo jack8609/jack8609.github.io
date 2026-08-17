@@ -56,6 +56,13 @@ globalThis.URL = {
 globalThis.requestAnimationFrame = (callback) => callback();
 globalThis.setTimeout = (callback) => callback();
 
+let plateInputs = { 've-plate1': '', 've-plate2': '' };
+globalThis.document = Object.assign(globalThis.document || {}, {
+  getElementById(id) {
+    return Object.prototype.hasOwnProperty.call(plateInputs, id) ? { value: plateInputs[id] } : null;
+  }
+});
+
 const source = await readFile(new NativeURL('../modules/app/utils.js', import.meta.url), 'utf8');
 const moduleUrl = `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`;
 const { registerUtils } = await import(moduleUrl);
@@ -63,8 +70,8 @@ registerUtils();
 
 const { utils } = window.ViolationHelper;
 assert.deepEqual(Object.keys(utils).sort(), [
-  'fileToUint8Array', 'fmt', 'inferInputName', 'resetClipUI', 'revokeURL',
-  'setActionsEnabled', 'triggerDownloadFromBlob'
+  'fileToUint8Array', 'fmt', 'getBaseNameWithoutExt', 'getPlateFromInputs', 'inferInputName',
+  'resetClipUI', 'revokeURL', 'setActionsEnabled', 'toLocalTimestamp', 'triggerDownloadFromBlob'
 ]);
 assert.equal(utils.fmt(Number.NaN), '00:00:00.00');
 assert.equal(utils.fmt(3661.5), '01:01:01.50');
@@ -88,5 +95,20 @@ assert.deepEqual(
   [...await utils.fileToUint8Array({ arrayBuffer: async () => Uint8Array.from([1, 2, 3]).buffer })],
   [1, 2, 3]
 );
+
+plateInputs = { 've-plate1': 'ABC', 've-plate2': '1234' };
+assert.equal(utils.getPlateFromInputs(), 'ABC-1234');
+plateInputs = { 've-plate1': 'ABC', 've-plate2': '' };
+assert.equal(utils.getPlateFromInputs(), 'ABC');
+plateInputs = { 've-plate1': '', 've-plate2': '' };
+assert.equal(utils.getPlateFromInputs(), '');
+
+assert.equal(utils.getBaseNameWithoutExt('MyVideo.mp4'), 'MyVideo');
+assert.equal(utils.getBaseNameWithoutExt('a/b:c*d?e.mov'), 'a_b_c_d_e');
+assert.equal(utils.getBaseNameWithoutExt(''), '');
+
+// 本機時間格式（非 UTC）：以固定日期驗證不會採用 toISOString 的 UTC 偏移
+const localDate = new Date(2026, 0, 2, 3, 4, 5); // 2026-01-02 03:04:05 本機時間
+assert.equal(utils.toLocalTimestamp(localDate), '20260102030405');
 
 console.log('utils contract passed');
