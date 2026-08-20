@@ -1,0 +1,257 @@
+{
+  "version": 1,
+  "exportedAt": "2026-08-20T09:31:32.606Z",
+  "profiles": {
+    "prsweb_tcpd_gov_tw": {
+      "displayName": "檢舉資料填寫 | 臺北市交通違規檢舉專區",
+      "fieldOrder": [
+        "plate",
+        "violation",
+        "description",
+        "date",
+        "time",
+        "location",
+        "evidenceImages"
+      ],
+      "fields": {
+        "date": {
+          "riskField": false,
+          "selector": [
+            {
+              "kind": "plain",
+              "transform": "westernToMinguoChinese",
+              "value": {
+                "index": 0,
+                "type": "indexedFingerprint",
+                "value": "input[type=\"text\"][autocomplete=\"off\"]"
+              }
+            }
+          ]
+        },
+        "description": {
+          "riskField": false,
+          "selector": [
+            {
+              "kind": "plain",
+              "value": "#sRuldec"
+            }
+          ]
+        },
+        "evidenceImages": {
+          "riskField": false,
+          "selector": [
+            {
+              "kind": "file-trigger",
+              "value": {
+                "labelConfidence": "low",
+                "labelText": "加入檔案",
+                "siblingIndexOfType": 0,
+                "tagName": "SPAN",
+                "type": "labelRelative"
+              }
+            }
+          ]
+        },
+        "location": {
+          "riskField": true,
+          "selector": [
+            {
+              "kind": "custom",
+              "role": "district",
+              "value": {
+                "index": 4,
+                "type": "indexedFingerprint",
+                "value": "input[type=\"text\"][autocomplete=\"off\"]"
+              }
+            },
+            {
+              "kind": "plain",
+              "role": "road",
+              "value": {
+                "index": 5,
+                "type": "indexedFingerprint",
+                "value": "input[type=\"text\"][autocomplete=\"off\"]"
+              }
+            },
+            {
+              "kind": "plain",
+              "role": "remainder",
+              "value": {
+                "labelConfidence": "low",
+                "labelText": "號",
+                "siblingIndexOfType": 0,
+                "tagName": "INPUT",
+                "type": "labelRelative"
+              }
+            }
+          ]
+        },
+        "plate": {
+          "riskField": false,
+          "selector": [
+            {
+              "kind": "plain",
+              "value": {
+                "index": 0,
+                "type": "indexedFingerprint",
+                "value": "input[type=\"text\"][maxlength=\"4\"]"
+              }
+            },
+            {
+              "kind": "plain",
+              "value": {
+                "labelConfidence": "low",
+                "labelText": "－",
+                "siblingIndexOfType": 0,
+                "tagName": "INPUT",
+                "type": "labelRelative"
+              }
+            }
+          ]
+        },
+        "time": {
+          "riskField": false,
+          "selector": [
+            {
+              "kind": "plain",
+              "value": {
+                "labelConfidence": "low",
+                "labelText": "時",
+                "siblingIndexOfType": 0,
+                "tagName": "INPUT",
+                "type": "labelRelative"
+              }
+            },
+            {
+              "kind": "plain",
+              "value": {
+                "labelConfidence": "low",
+                "labelText": "分",
+                "siblingIndexOfType": 0,
+                "tagName": "INPUT",
+                "type": "labelRelative"
+              }
+            }
+          ]
+        },
+        "violation": {
+          "riskField": true,
+          "selector": [
+            {
+              "kind": "custom",
+              "value": {
+                "index": 8,
+                "type": "indexedFingerprint",
+                "value": "input[type=\"text\"][autocomplete=\"off\"]"
+              }
+            }
+          ]
+        }
+      },
+      "matchPatterns": [
+        "https://prsweb.tcpd.gov.tw/*"
+      ],
+      "siteId": "prsweb_tcpd_gov_tw"
+    },
+    "tvrs_ntpd_gov_tw": {
+      "displayName": "新北市政府警察局交通警察大隊 Traffic Police Corps, New Taipei City Police Dep交通違規檢舉系統",
+      "fieldOrder": [
+        "plate",
+        "time",
+        "violation",
+        "description",
+        "date",
+        "location",
+        "evidenceImages"
+      ],
+      "fields": {
+        "date": {
+          "riskField": false,
+          "selector": [
+            {
+              "kind": "plain",
+              "value": "#eventsData_vio_date"
+            }
+          ]
+        },
+        "description": {
+          "riskField": false,
+          "selector": [
+            {
+              "kind": "plain",
+              "value": "#eventsData_vio_content_memo"
+            }
+          ]
+        },
+        "evidenceImages": {
+          "riskField": false,
+          "selector": [
+            {
+              "kind": "file-trigger",
+              "value": "input[type=\"button\"][value=\"新增檔案\"]"
+            }
+          ]
+        },
+        "location": {
+          "riskField": true,
+          "selector": [
+            {
+              "kind": "select",
+              "role": "district",
+              "value": "#eventsData_dist_code"
+            },
+            {
+              "kind": "select",
+              "role": "road",
+              "value": "#eventsData_road_code"
+            },
+            {
+              "kind": "plain",
+              "role": "remainder",
+              "value": "#eventsData_custom_addr"
+            }
+          ]
+        },
+        "plate": {
+          "riskField": false,
+          "selector": [
+            {
+              "kind": "plain",
+              "value": "#vio_car_num1"
+            },
+            {
+              "kind": "plain",
+              "value": "#vio_car_num2"
+            }
+          ]
+        },
+        "time": {
+          "riskField": true,
+          "selector": [
+            {
+              "kind": "select",
+              "value": "#eventsData_vio_hour"
+            },
+            {
+              "kind": "select",
+              "value": "#eventsData_vio_min"
+            }
+          ]
+        },
+        "violation": {
+          "riskField": true,
+          "selector": [
+            {
+              "kind": "select",
+              "value": "#eventsData_vio_content_code"
+            }
+          ]
+        }
+      },
+      "matchPatterns": [
+        "https://tvrs.ntpd.gov.tw/*"
+      ],
+      "siteId": "tvrs_ntpd_gov_tw"
+    }
+  }
+}

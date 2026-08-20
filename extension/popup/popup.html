@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<title>違規檢舉小幫手</title>
+<link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <h1>違規檢舉小幫手</h1>
+
+  <section id="current-site">
+    <h2>目前網站</h2>
+    <p id="current-site-info">讀取中…</p>
+    <div id="current-site-actions"></div>
+    <p id="current-site-error" class="error-message"></p>
+  </section>
+
+  <details id="more-settings">
+    <summary>更多設定（已建檔網站管理／匯出入／進階選項）</summary>
+
+    <section id="profile-list-section">
+      <h2>管理所有已建檔網站</h2>
+      <ul id="profile-list"></ul>
+    </section>
+
+    <section id="export-import-section">
+      <h2>匯出/匯入設定</h2>
+      <button id="btn-export" type="button">匯出成 JSON</button>
+      <label class="file-label">
+        匯入 JSON
+        <input id="input-import" type="file" accept="application/json" />
+      </label>
+      <p id="export-import-message"></p>
+    </section>
+
+    <section id="advanced-settings-section">
+      <h2>進階設定</h2>
+      <label>
+        <input id="checkbox-fuzzy-match" type="checkbox" />
+        風險欄位允許模糊比對（找不到完全對應時，用文字相似度嘗試自動選取）
+      </label>
+    </section>
+  </details>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

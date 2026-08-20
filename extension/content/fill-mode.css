@@ -1,0 +1,88 @@
+.vh-needs-review {
+  outline: 3px solid #e53935 !important;
+  outline-offset: 2px;
+}
+
+.vh-needs-review-badge {
+  all: initial;
+  position: absolute;
+  z-index: 2147483000;
+  transform: translateY(-100%);
+  background: #e53935;
+  color: #fff;
+  font-family: -apple-system, "Segoe UI", "Noto Sans TC", sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+}
+
+#vh-fill-modal-overlay {
+  all: initial;
+  position: fixed;
+  inset: 0;
+  z-index: 2147483001;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#vh-fill-modal {
+  all: initial;
+  display: block;
+  width: 460px;
+  max-height: 70vh;
+  overflow-y: auto;
+  background: #1e1e2e;
+  color: #f5f5f5;
+  font-family: -apple-system, "Segoe UI", "Noto Sans TC", sans-serif;
+  font-size: 13px;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+#vh-fill-modal * {
+  box-sizing: border-box;
+  font-family: inherit;
+}
+
+#vh-fill-modal .vh-fill-modal-title {
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+#vh-fill-modal .vh-fill-modal-evidence {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 8px;
+  border: 1px solid #3b3b52;
+  border-radius: 6px;
+}
+
+#vh-fill-modal .vh-fill-modal-evidence-status {
+  flex: 1;
+}
+
+#vh-fill-modal .vh-fill-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+#vh-fill-modal button {
+  all: unset;
+  cursor: pointer;
+  background: #3b3b52;
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: 4px;
+}
+
+#vh-fill-modal button:hover {
+  background: #52527a;
+}
