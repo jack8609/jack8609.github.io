@@ -37,8 +37,8 @@ export function registerUtils() {
       startRange.value = 0;
       endRange.value = 100;
     }
-    startLabel.textContent = `開始：${fmt(0)}`;
-    endLabel.textContent = `結束：${fmt(duration || 0)}`;
+    startLabel.textContent = `${fmt(0)}`;
+    endLabel.textContent = `${fmt(duration || 0)}`;
     services.timeline.updateSelectionBar();
     requestAnimationFrame(() => {
       services.timeline.updateSelectionBar();

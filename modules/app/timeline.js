@@ -35,8 +35,8 @@ export function initializeTimeline() {
       startValue = endValue;
     }
 
-    startLabel.textContent = `開始：${fmt(hasDuration ? startValue : 0)}`;
-    endLabel.textContent = `結束：${fmt(hasDuration ? endValue : 0)}`;
+    startLabel.textContent = `${fmt(hasDuration ? startValue : 0)}`;
+    endLabel.textContent = `${fmt(hasDuration ? endValue : 0)}`;
 
     if (hasDuration) {
       if (which === 'start' && isFinite(startValue)) preview.currentTime = startValue;

@@ -188,6 +188,11 @@ export function createSnapshotEditor() {
         if (drawingOverlay) drawingOverlay.style.pointerEvents = overlayInteractive ? 'auto' : 'none';
       }
 
+      // 沒有選取過車牌時預設「選取車牌」，已選取過車牌則預設「紅框」
+      function applyDefaultToolForSnapshot() {
+        setTool(plateImageInMemory ? 'shape' : 'plate');
+      }
+
       function setTool(mode) {
         toolMode = mode;
         if (mode !== 'plate') lastNonPlateTool = mode;
@@ -356,6 +361,7 @@ export function createSnapshotEditor() {
           clearAllDrawings();
           drawOverlayContent();
           restorePlatePreviewIfAny?.();
+          applyDefaultToolForSnapshot();
         };
 
         if (staticImage.complete) onImgReady();
@@ -434,8 +440,7 @@ export function createSnapshotEditor() {
         const left = container.querySelector('.editor-left');
         left.insertBefore(bar, left.querySelector('.editor-stage'));
 
-        toolSelect.value = 'shape';
-        setTool('shape');
+        applyDefaultToolForSnapshot();
         updateToolOptionsVisibility();
       }
 
@@ -529,7 +534,7 @@ export function createSnapshotEditor() {
         try { clearPlateCrop(); } catch {}
         if (selectionBox) selectionBox.style.display = 'none';
         setOverlayInteractive(true);
-        setTool('shape');
+        applyDefaultToolForSnapshot();
         drawOverlayContent();
       }
 

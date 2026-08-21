@@ -381,6 +381,8 @@
     a { color: var(--link-color); }
     .hint { background: var(--panel); color: var(--fg); font-size: .9rem; }
     .col { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+    /* Grid 子項預設 min-width:auto 會用內容的 min-content 撐開欄寬，直向單欄時導致溢出，需重設為 0 */
+    .col > * { min-width: 0; }
     @media (min-width: 980px) { .col { grid-template-columns: 1.2fr 1fr; } }
     /* 標題顏色 */
     .group-title { margin: .5rem 0 .25rem; font-weight: 600; color: #c9d1d9; }
@@ -389,12 +391,34 @@
     /* =========================================================
        Media Area & Stacked Slider
        ========================================================= */
-    .media-area { padding: 0 var(--rail-pad); }
+    /* 外框樣式比照右側「違規資訊」的 .toolbar / .preview，讓橫向雙欄視覺一致 */
+    .media-area {
+      padding: 12px var(--rail-pad);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--panel);
+    }
     .media-area video {
       width: 100%; max-width: 100%; display: block; background: #000; border-radius: 8px;
     }
 
+    /* 整合式時間軸與數據面板：左側剪輯範圍／右側播放進度 */
+    .timeline-panel { margin-top: .75rem; }
+    .timeline-data {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: .5rem 1rem;
+      flex-wrap: wrap;
+      margin-bottom: .5rem;
+    }
+    .timeline-data .chip { white-space: nowrap; }
+    @media (max-width: 480px) {
+      .timeline-data { justify-content: flex-start; }
+    }
+
     .stacked-slider { position: relative; margin-top: .75rem; }
+
     .stacked-slider .rail {
       position: relative;
       height: calc(var(--spacing-v) * 2 + var(--track-height));
@@ -607,8 +631,33 @@
     <div class="col">
       <!-- 左側：預覽與上下雙滑桿 -->
       <div class="media-area">
-        <div>
-          <h3>輸出操作</h3>
+        <h3>輸出操作</h3>
+        <!-- 1. 影像播放器 -->
+        <video id="preview" controls playsinline></video>
+
+        <!-- 2. 整合式時間軸與數據面板（左：剪輯範圍 / 右：播放進度）+ 3. 剪輯區間調整滑桿 -->
+        <div class="timeline-panel">
+          <div class="timeline-data">
+            <span class="chip time" id="clipRangeLabel">剪輯：<span id="startLabel">00:00:00.00</span>~<span id="endLabel">00:00:00.00</span></span>
+            <span class="chip time" id="playProgressLabel"><span id="cur">00:00:00.00</span> / <span id="dur">00:00:00.00</span></span>
+          </div>
+
+          <div class="stacked-slider">
+            <div class="rail" id="rail">
+              <div class="track top"></div>
+              <div class="track bottom"></div>
+              <div class="selection" id="selection"></div>
+
+              <!-- 上：開始滑桿（初始 0/100） -->
+              <input id="startRange" type="range" min="0" max="100" step="0.01" value="0" />
+              <!-- 下：結束滑桿（初始就在 100%） -->
+              <input id="endRange"   type="range" min="0" max="100" step="0.01" value="100" />
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. 功能操作按鈕區 -->
+        <div class="output-actions">
           <div class="controls">
             <button id="btnClip" class="btn" disabled>剪輯並輸出</button>
             <button id="btnDownloadFull" class="btn" disabled>下載完整轉檔</button>
@@ -616,30 +665,8 @@
           </div>
           <p id="out" class="hint"></p>
         </div>
-
-        <video id="preview" controls playsinline></video>
-        <div class="time" style="margin-top:.5rem;">
-          目前：<span id="cur">00:00:00.00</span> / 片長：<span id="dur">00:00:00.00</span>
-        </div>
-
-        <div class="stacked-slider">
-          <div class="rail" id="rail">
-            <div class="track top"></div>
-            <div class="track bottom"></div>
-            <div class="selection" id="selection"></div>
-
-            <!-- 上：開始滑桿（初始 0/100） -->
-            <input id="startRange" type="range" min="0" max="100" step="0.01" value="0" />
-            <!-- 下：結束滑桿（初始就在 100%） -->
-            <input id="endRange"   type="range" min="0" max="100" step="0.01" value="100" />
-          </div>
-
-          <div class="controls" style="margin-top:.5rem;">
-            <span class="chip time" id="startLabel">開始：00:00:00.00</span>
-            <span class="chip time" id="endLabel">結束：00:00:00.00</span>
-          </div>
-        </div>
       </div>
+
 
       <!-- 右側：編輯車牌、日期、違規事項區域 -->
       <div>
