@@ -630,40 +630,42 @@
   <div class="panel">
     <div class="col">
       <!-- 左側：預覽與上下雙滑桿 -->
-      <div class="media-area">
-        <h3>輸出操作</h3>
-        <!-- 1. 影像播放器 -->
-        <video id="preview" controls playsinline></video>
+      <div>
+        <h3 class="group-title">輸出操作</h3>
+        <div class="media-area">
+          <!-- 1. 影像播放器 -->
+          <video id="preview" controls playsinline></video>
 
-        <!-- 2. 整合式時間軸與數據面板（左：剪輯範圍 / 右：播放進度）+ 3. 剪輯區間調整滑桿 -->
-        <div class="timeline-panel">
-          <div class="timeline-data">
-            <span class="chip time" id="clipRangeLabel">剪輯：<span id="startLabel">00:00:00.00</span>~<span id="endLabel">00:00:00.00</span></span>
-            <span class="chip time" id="playProgressLabel"><span id="cur">00:00:00.00</span> / <span id="dur">00:00:00.00</span></span>
-          </div>
+          <!-- 2. 整合式時間軸與數據面板（左：剪輯範圍 / 右：播放進度）+ 3. 剪輯區間調整滑桿 -->
+          <div class="timeline-panel">
+            <div class="timeline-data">
+              <span class="chip time" id="clipRangeLabel">剪輯：<span id="startLabel">00:00:00.00</span>~<span id="endLabel">00:00:00.00</span></span>
+              <span class="chip time" id="playProgressLabel"><span id="cur">00:00:00.00</span> / <span id="dur">00:00:00.00</span></span>
+            </div>
 
-          <div class="stacked-slider">
-            <div class="rail" id="rail">
-              <div class="track top"></div>
-              <div class="track bottom"></div>
-              <div class="selection" id="selection"></div>
+            <div class="stacked-slider">
+              <div class="rail" id="rail">
+                <div class="track top"></div>
+                <div class="track bottom"></div>
+                <div class="selection" id="selection"></div>
 
-              <!-- 上：開始滑桿（初始 0/100） -->
-              <input id="startRange" type="range" min="0" max="100" step="0.01" value="0" />
-              <!-- 下：結束滑桿（初始就在 100%） -->
-              <input id="endRange"   type="range" min="0" max="100" step="0.01" value="100" />
+                <!-- 上：開始滑桿（初始 0/100） -->
+                <input id="startRange" type="range" min="0" max="100" step="0.01" value="0" />
+                <!-- 下：結束滑桿（初始就在 100%） -->
+                <input id="endRange"   type="range" min="0" max="100" step="0.01" value="100" />
+              </div>
             </div>
           </div>
-        </div>
 
-        <!-- 4. 功能操作按鈕區 -->
-        <div class="output-actions">
-          <div class="controls">
-            <button id="btnClip" class="btn" disabled>剪輯並輸出</button>
-            <button id="btnDownloadFull" class="btn" disabled>下載完整轉檔</button>
-            <button id="btnThumbnail" class="btn" disabled>擷取縮圖</button>
+          <!-- 4. 功能操作按鈕區 -->
+          <div class="output-actions">
+            <div class="controls">
+              <button id="btnClip" class="btn" disabled>剪輯並輸出</button>
+              <button id="btnDownloadFull" class="btn" disabled>下載完整轉檔</button>
+              <button id="btnThumbnail" class="btn" disabled>擷取縮圖</button>
+            </div>
+            <p id="out" class="hint"></p>
           </div>
-          <p id="out" class="hint"></p>
         </div>
       </div>
 
