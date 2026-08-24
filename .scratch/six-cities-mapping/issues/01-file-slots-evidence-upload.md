@@ -4,7 +4,7 @@
 
 **Blocked by：** None — can start immediately.
 
-**Status:** ready-for-agent
+**Status:** done
 
 ## 驗收標準
 
@@ -13,7 +13,7 @@
 - [x] `extension/content/evidence-upload.js` 新增「依序把第 i 個使用者選擇的檔案指定給第 i 個綁定 input」的直接賦值邏輯（純函式部分要有 contract test）：每個 input 各自 `DataTransfer` 賦值＋dispatch `change`；若選擇的檔案數超過綁定槽位數，多出的檔案標記為無法自動上傳，不猜測塞進不存在的槽位；若選擇的檔案數少於槽位數，只填有對應檔案的槽位。
 - [x] 既有 extension contract test 全綠（含新增測試）。
 - [x] `/code-review` 兩軸（Standards + Spec）皆已執行，沒有未處理的硬性違規。
-- [ ] 使用者已用真實瀏覽器（臺南或桃園其中一都）驗收：綁定 N 個固定附件 input 後，選擇 2~3 個檔案，確認依序正確填入對應槽位，且重整頁面後 mapping 綁定仍在。
+- [x] 使用者已用真實瀏覽器（臺南或桃園其中一都）驗收：綁定 N 個固定附件 input 後，選擇 2~3 個檔案，確認依序正確填入對應槽位，且重整頁面後 mapping 綁定仍在。（2026-08-24 使用者確認：臺南、桃園兩都皆已人工驗證塞檔案動作無誤。）
 
 ## 需要使用者手動驗收的項目
 
@@ -22,7 +22,7 @@
 
 ## 交給下一輪的起手 prompt
 
-> 票券 01（file-slots 固定多槽位附件上傳）程式碼已實作完成，`/code-review` 兩軸都跑過並修掉唯一一個雙軸皆抓到的硬性問題，只剩使用者真實瀏覽器手動驗收待完成。
+> 票券 01（file-slots 固定多槽位附件上傳）已完整驗收通過（**票券狀態：done**）。程式碼已實作完成，`/code-review` 兩軸都跑過並修掉唯一一個雙軸皆抓到的硬性問題，使用者已於 2026-08-24 用真實瀏覽器對臺南、桃園兩都驗證塞檔案動作無誤，全部驗收標準已勾選。
 >
 > **改了哪些檔案：**
 > - `extension/lib/schema.js`：`FIELD_KINDS` 新增 `'file-slots'`，`validateProfile` 沿用「無特別限制」即允許多個 item（跟 `file-trigger` 固定 1 個的限制分開判斷）。
@@ -32,8 +32,6 @@
 > - `extension/lib/fill-engine.js`：`buildItemPlan` 的 kind guard 補上 `'file-slots'`，跟 `'file'`/`'file-trigger'` 一樣一律 `unsupported-kind`（這個欄位走專用流程，不套用一般 `applyItem`）。
 > - 對應的 3 個 contract test 檔案（schema/evidence-upload/fill-engine）都補了新測試；另外**順手修正**一個跟本票無關、原本就會失敗的既有斷言（`extension-schema-contract.test.mjs` 的 `LOGICAL_FIELDS` 期望順序跟 commit `825bdea`「調整對應面板順序」之後的實際順序不符），這樣「既有 extension contract test 全綠」才成立，9 個 extension contract test 目前全綠。
 >
-> **尚未完成：** 驗收標準最後一項——使用者需在臺南或桃園頁面用真實瀏覽器綁定 N 個固定附件 input（依序點選多個 `<input type=file>`），選 2~3 個檔案確認依序正確填入對應槽位，且重整頁面後 mapping 綁定仍在。完成後才能把本票標成 done。
->
-> **下一步建議：** 票券 01 done 後可接票券 02（高雄兩段式上傳確認鈕）或票券 03（桃園違規事項候選元素群組），兩者都無阻塞、互相獨立，建議依序而非同時進行（同一批核心檔案）。
+> **下一步建議：** 直接接票券 02（高雄兩段式上傳確認鈕）或票券 03（桃園違規事項候選元素群組），兩者都無阻塞、互相獨立，建議依序而非同時進行（同一批核心檔案：`schema.js`/`mapping-mode.js`/`evidence-upload.js`/`fill-engine.js`）。
 >
 > **需要讀的背景文件：** `.scratch/six-cities-mapping/spec.md`（尤其「引擎擴充 1」一節）、本票券檔案、`.scratch/six-cities-survey/SUMMARY.md`（落差 1/2 的技術依據，臺南/桃園附件 DOM 結構調查細節）。
