@@ -74,6 +74,12 @@ const { resolveOptionMatch, applyDateTransform, buildFillPlan } = await import('
   assert.equal(applyDateTransform('', 'westernToMinguoChinese'), '');
   assert.equal(applyDateTransform(null, 'westernToMinguo'), '');
   assert.equal(applyDateTransform(null, 'westernToMinguoChinese'), '');
+
+  // westernToMinguoCompact（票券 05：臺中違規日期，7 碼無分隔符民國數字，月/日補零）
+  assert.equal(applyDateTransform('2026-08-17', 'westernToMinguoCompact'), '1150817');
+  assert.equal(applyDateTransform('2026-01-05', 'westernToMinguoCompact'), '1150105', '月/日要補零，跟中文全形格式不同');
+  assert.equal(applyDateTransform('', 'westernToMinguoCompact'), '');
+  assert.equal(applyDateTransform(null, 'westernToMinguoCompact'), '');
 }
 
 // buildFillPlan：純資料整形，不碰 DOM。給定 profile + 來源資料，決定每個 selector item 該填什麼值，
@@ -200,6 +206,21 @@ const { resolveOptionMatch, applyDateTransform, buildFillPlan } = await import('
   const customDatePlan = buildFillPlan(sourceData, customDateProfile);
   assert.equal(customDatePlan[0].items[0].targetValue, '115 年 8 月 17 日');
   assert.equal(customDatePlan[0].items[0].skipReason, undefined);
+
+  // time 欄位只綁 1 個 item（票券 05：臺中違規時間，單一輸入框接收合併後的 4 碼字串）——
+  // 要把 hour+minute 合併成 'HHmm'，不是沿用「index 0 = hour」的兩元素位置慣例
+  const singleTimeProfile = {
+    fieldOrder: ['time'],
+    fields: { time: { riskField: false, selector: [{ kind: 'plain', value: '#time' }] } }
+  };
+  const singleTimePlan = buildFillPlan(sourceData, singleTimeProfile);
+  assert.equal(singleTimePlan[0].items[0].targetValue, '1305');
+
+  // hour/minute 其中之一缺值時不猜測，直接 skip
+  const singleTimeMissingMinute = buildFillPlan({ ...sourceData, minute: '' }, singleTimeProfile);
+  assert.equal(singleTimeMissingMinute[0].items[0].skipReason, 'no-source-value');
+  const singleTimeMissingHour = buildFillPlan({ ...sourceData, hour: '' }, singleTimeProfile);
+  assert.equal(singleTimeMissingHour[0].items[0].skipReason, 'no-source-value');
 }
 
 console.log('extension-fill-engine-contract.test.mjs OK');

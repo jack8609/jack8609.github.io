@@ -497,13 +497,15 @@
     );
   }
 
-  // 三選一而非是/否二選一：新北市（plain 唯讀輸入框）通常選「不轉換」，台北市 Vuetify 點選式
-  // 違規日期則需要中文全形格式（見 spec.md 問題 4），民國斜線格式保留給未來其他網站沿用。
+  // 四選一而非是/否二選一：新北市（plain 唯讀輸入框）通常選「不轉換」，台北市 Vuetify 點選式
+  // 違規日期則需要中文全形格式（見 spec.md 問題 4），民國斜線格式保留給未來其他網站沿用，
+  // 民國緊湊數字格式是臺中（票券 05）需要的無分隔符 7 碼格式。
   function promptDateTransform() {
     const options = [
       { value: null, label: '不轉換（保留西元年格式，例如 2026-08-17）' },
       { value: 'westernToMinguo', label: '民國斜線格式（例如 115/08/17）' },
-      { value: 'westernToMinguoChinese', label: '民國中文全形格式（例如 115 年 8 月 17 日）' }
+      { value: 'westernToMinguoChinese', label: '民國中文全形格式（例如 115 年 8 月 17 日）' },
+      { value: 'westernToMinguoCompact', label: '民國緊湊數字格式（例如 1150817）' }
     ];
     return showButtonListModal(
       '這個是「違規日期」邏輯欄位，來源網站資料是西元年（例如 2026-08-17）。\n\n' +

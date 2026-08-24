@@ -51,17 +51,22 @@ export function resolveOptionMatch(optionTexts, sourceValue, { valueMap, fuzzyAl
   return { matched: false, reason: 'not-found' };
 }
 
-// 支援兩種西元轉民國格式（見對應模式錄製時的 promptDateTransform 三選一）：
+// 支援三種西元轉民國格式（見對應模式錄製時的 promptDateTransform 四選一）：
 // 'westernToMinguo' → 斜線格式（115/08/17，月/日補零）；
-// 'westernToMinguoChinese' → 中文全形格式（115 年 8 月 17 日，台北市違規日期需要，月/日不補零）。
+// 'westernToMinguoChinese' → 中文全形格式（115 年 8 月 17 日，台北市違規日期需要，月/日不補零）；
+// 'westernToMinguoCompact' → 無分隔符緊湊數字（1150817，月/日補零，臺中違規日期需要，見票券 05）。
 export function applyDateTransform(isoDate, transform) {
   if (!isoDate) return '';
-  if (transform !== 'westernToMinguo' && transform !== 'westernToMinguoChinese') return isoDate;
+  const knownTransforms = ['westernToMinguo', 'westernToMinguoChinese', 'westernToMinguoCompact'];
+  if (!knownTransforms.includes(transform)) return isoDate;
   const [year, month, day] = isoDate.split('-').map(Number);
   if (!year || !month || !day) return isoDate;
   const minguoYear = year - MINGUO_OFFSET;
   if (transform === 'westernToMinguoChinese') return `${minguoYear} 年 ${month} 月 ${day} 日`;
-  return `${minguoYear}/${String(month).padStart(2, '0')}/${String(day).padStart(2, '0')}`;
+  const paddedMonth = String(month).padStart(2, '0');
+  const paddedDay = String(day).padStart(2, '0');
+  if (transform === 'westernToMinguoCompact') return `${minguoYear}${paddedMonth}${paddedDay}`;
+  return `${minguoYear}/${paddedMonth}/${paddedDay}`;
 }
 
 function buildLocationItemPlan(item, sourceData) {
@@ -83,7 +88,8 @@ function buildLocationItemPlan(item, sourceData) {
 // index：這個 item 在欄位 selector 陣列裡的位置，plate/time 這類多元素欄位沿用既有慣例
 // （跟錄製順序一致的位置對應，例如車牌永遠是 [左碼, 右碼]、時間永遠是 [時, 分]），
 // 這點沒有另外存 schema metadata，是延續 P1 就存在的既有假設，不是這裡新增的規則。
-function buildItemPlan(fieldName, item, index, sourceData) {
+// itemCount：該欄位 selector 陣列的總長度，只有 time 欄位需要依此分流（見下方 time 分支）。
+function buildItemPlan(fieldName, item, index, sourceData, itemCount) {
   // 'file'：泛用的原生檔案 input（一般欄位手動綁定成這個 kind 時）；'file-trigger'：evidenceImages
   // 專用（PLAN_B.md），綁定的是觸發按鈕本身；'file-slots'：evidenceImages 專用（票券 01，臺南/桃園
   // 固定多槽位附件），綁定的是固定 input 本身。三者都不套用這裡的一般賦值邏輯——evidenceImages
@@ -98,7 +104,12 @@ function buildItemPlan(fieldName, item, index, sourceData) {
 
   let value;
   if (fieldName === 'plate') value = sourceData.plate ? sourceData.plate[index] : undefined;
-  else if (fieldName === 'time') value = index === 0 ? sourceData.hour : sourceData.minute;
+  else if (fieldName === 'time') {
+    // 臺中（票券 05）時間欄位是單一輸入框、需要 hour+minute 合併成 'HHmm'；臺北/新北是時/分
+    // 各自獨立元素，維持既有的位置對應（index 0 = hour, index 1 = minute）。
+    if (itemCount === 1) value = (sourceData.hour && sourceData.minute) ? `${sourceData.hour}${sourceData.minute}` : undefined;
+    else value = index === 0 ? sourceData.hour : sourceData.minute;
+  }
   else if (fieldName === 'violation') value = sourceData.violationText;
   else if (fieldName === 'date') value = applyDateTransform(sourceData.date, item.transform);
   else if (fieldName === 'description') value = sourceData.description;
@@ -113,7 +124,7 @@ export function buildFillPlan(sourceData, profile) {
   for (const fieldName of profile.fieldOrder) {
     const field = profile.fields[fieldName];
     if (!field) continue;
-    const items = field.selector.map((item, index) => buildItemPlan(fieldName, item, index, sourceData));
+    const items = field.selector.map((item, index) => buildItemPlan(fieldName, item, index, sourceData, field.selector.length));
     plans.push({ fieldName, riskField: field.riskField, items });
   }
   return plans;
