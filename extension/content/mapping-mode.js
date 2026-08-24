@@ -113,6 +113,12 @@
     title.title = '拖曳可移動面板位置';
     panel.appendChild(title);
 
+    // 標題列固定不動，下面才是可捲動區塊（見 mapping-mode.css 的 flex 版面），避免面板拉高、
+    // 捲到下方對應欄位時標題（拖曳把手）被遮住還要先捲回頂端才能移動視窗。
+    const body = document.createElement('div');
+    body.className = 'vh-mapping-body';
+    panel.appendChild(body);
+
     const list = document.createElement('ul');
     list.className = 'vh-mapping-list';
     for (const fieldName of LOGICAL_FIELDS) {
@@ -161,7 +167,7 @@
 
       list.appendChild(li);
     }
-    panel.appendChild(list);
+    body.appendChild(list);
 
     const actions = document.createElement('div');
     actions.className = 'vh-mapping-actions';
@@ -176,14 +182,14 @@
     doneBtn.textContent = '完成';
     doneBtn.addEventListener('click', teardown);
     actions.appendChild(doneBtn);
-    panel.appendChild(actions);
+    body.appendChild(actions);
 
     if (pickingField) {
       const hint = document.createElement('div');
       hint.className = 'vh-mapping-hint';
       hint.textContent =
         `請在頁面上點選「${FIELD_LABELS[pickingField.fieldName] || pickingField.fieldName}」對應的欄位（按 Esc 取消）`;
-      panel.appendChild(hint);
+      body.appendChild(hint);
     }
   }
 
