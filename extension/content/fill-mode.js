@@ -24,7 +24,7 @@
     import(chrome.runtime.getURL('lib/address-parser.js')),
     import(chrome.runtime.getURL('content/evidence-upload.js'))
   ]);
-  const { FIELD_LABELS } = schemaMod;
+  const { FIELD_LABELS, partitionEvidenceSelector } = schemaMod;
   const { createProfileStore } = storageMod;
   const { siteIdFromHostname } = siteMod;
   const { buildFillPlan, resolveOptionMatch } = fillEngineMod;
@@ -53,25 +53,47 @@
     // file-slots（臺南/桃園固定多槽位附件，票券 01）：依序把第 i 個選定的檔案指定給第 i 個
     // 綁定槽位，跟 file-trigger 站的祖先鏈反推/逐一點擊觸發按鈕完全是不同的注入方式。
     if (evidenceTarget.mode === 'file-slots') {
-      const { filledCount, overflowCount } = injectFilesIntoSlots(evidenceTarget.slotInputs, files);
+      const { slotInputs, confirmButtonEl } = evidenceTarget;
+      // 高雄式：只綁了 1 個槽位，且該槽位本身是 multiple input——使用者直接點選 fl_File 會被
+      // 記錄成單一個 file-slots item，但它跟臺南/桃園「N 個各自 non-multiple 固定槽位」的
+      // 「一個檔案對一個槽位」語意不同，全部選定的檔案都要塞進這一個 input（等同 file-trigger
+      // 的 assign-all 行為），見票券 02 使用者真實瀏覽器回報。
+      if (slotInputs.length === 1 && slotInputs[0].multiple) {
+        injectFilesIntoInput(slotInputs[0], files);
+        if (confirmButtonEl) confirmButtonEl.click();
+        statusEl.textContent = confirmButtonEl
+          ? `✅ 已選定 ${files.length} 個檔案，已自動點擊確認上傳鈕`
+          : `✅ 已選定 ${files.length} 個檔案並上傳`;
+        return;
+      }
+      const { filledCount, overflowCount } = injectFilesIntoSlots(slotInputs, files);
       const lines = [`✅ 已選定 ${files.length} 個檔案，成功上傳 ${filledCount} 個`];
       if (overflowCount > 0) lines.push(`⚠️ 有 ${overflowCount} 個檔案超過可綁定的欄位數，請手動上傳`);
       statusEl.style.whiteSpace = 'pre-line';
       statusEl.textContent = lines.join('\n');
       return;
     }
-    const { baseInput, triggerEl } = evidenceTarget;
+    const { baseInput, triggerEl, confirmButtonEl } = evidenceTarget;
     const injectionPlan = planEvidenceInjection(baseInput, files);
     if (injectionPlan.action === 'assign-all') {
       injectFilesIntoInput(baseInput, injectionPlan.files);
-      statusEl.textContent = `✅ 已選定 ${injectionPlan.files.length} 個檔案並上傳`;
+      // 兩段式上傳（高雄，票券 02）：選檔本身不會被站方算數，需再點一次獨立的「上傳」按鈕
+      // 才會累加進附件清單；沒有綁定確認鈕的網站（台北市等既有 profile）維持原行為不變。
+      if (confirmButtonEl) confirmButtonEl.click();
+      statusEl.textContent = confirmButtonEl
+        ? `✅ 已選定 ${injectionPlan.files.length} 個檔案，已自動點擊確認上傳鈕`
+        : `✅ 已選定 ${injectionPlan.files.length} 個檔案並上傳`;
       return;
     }
     // incremental（新北市 multiple === false，票券 03）：逐一點擊觸發按鈕找新槽位，單一檔案
     // 失敗不中斷其餘檔案，明確列出失敗的第幾個附件，不靜默跳過。
     const { failedIndexes } = injectFilesIncrementally(baseInput, triggerEl, injectionPlan.files);
+    // 確認上傳鈕（票券 02）不限定只搭配 assign-all：只要欄位有綁定，不論走哪個 file-trigger
+    // 子分支都要點擊，沒有綁定的網站（新北市既有 profile）維持原行為不變。
+    if (confirmButtonEl) confirmButtonEl.click();
     const okCount = injectionPlan.files.length - failedIndexes.length;
     const lines = [`✅ 已選定 ${injectionPlan.files.length} 個檔案，成功上傳 ${okCount} 個`];
+    if (confirmButtonEl) lines.push('已自動點擊確認上傳鈕');
     failedIndexes.forEach((index) => lines.push(`⚠️ 第 ${index + 1} 個附件無法自動上傳，請手動新增`));
     statusEl.style.whiteSpace = 'pre-line';
     statusEl.textContent = lines.join('\n');
@@ -295,12 +317,22 @@
     if (!field) return null;
     const fieldLabel = FIELD_LABELS.evidenceImages;
 
+    // 確認上傳按鈕（高雄兩段式上傳，.scratch/six-cities-mapping/issues/02-kaohsiung-two-stage-upload.md）
+    // 是與主要檔案輸入 item 分開綁定的選填 item，不影響 field.selector[0] 永遠是主要 item
+    // 的假設；schema.js 的 validateProfile 已擋下「確認鈕搭配不止 1 個主要 item」與「只綁確認鈕」
+    // 這兩種無意義組合，這裡不需要重複檢查。
+    const { confirmItem, primaryItems: primarySelector } = partitionEvidenceSelector(field.selector);
+    if (!primarySelector.length) {
+      markNeedsReview(fieldLabel, '找不到主要的附件上傳欄位設定，請重新綁定這個欄位', null);
+      return null;
+    }
+
     // file-slots（臺南/桃園固定多槽位附件，票券 01：
     // .scratch/six-cities-mapping/issues/01-file-slots-evidence-upload.md）：每個 item 直接
     // 綁定一個固定 input，不像 file-trigger 需要祖先鏈反推，逐一解析即可。
-    if (field.selector[0].kind === 'file-slots') {
+    if (primarySelector[0].kind === 'file-slots') {
       const slotInputs = [];
-      for (const item of field.selector) {
+      for (const item of primarySelector) {
         const input = await resolveWithRetry(item.value);
         if (input) slotInputs.push(input);
       }
@@ -308,17 +340,21 @@
         markNeedsReview(fieldLabel, '找不到任何附件上傳欄位，可能已失效，請重新綁定這個欄位', null);
         return null;
       }
-      if (slotInputs.length < field.selector.length) {
+      if (slotInputs.length < primarySelector.length) {
         markNeedsReview(
-          fieldLabel, `只找到 ${slotInputs.length}/${field.selector.length} 個附件欄位，部分槽位可能已失效`, null
+          fieldLabel, `只找到 ${slotInputs.length}/${primarySelector.length} 個附件欄位，部分槽位可能已失效`, null
         );
       }
       summaryLines.push(`ℹ️ ${fieldLabel}：請按下面「選擇附件並上傳」按鈕選取檔案`);
-      return { mode: 'file-slots', slotInputs };
+      // 確認上傳按鈕只能搭配剛好 1 個主要 item（schema.js 已擋下其他組合），對應高雄
+      // fl_File 這種單一 multiple input 被使用者直接點選、記錄成單一個 file-slots item 的案例（見
+      // 票券 02 使用者手動驗收回報），不限 file-trigger 才解析確認鈕。
+      const confirmButtonEl = confirmItem ? await resolveWithRetry(confirmItem.value) : null;
+      return { mode: 'file-slots', slotInputs, confirmButtonEl };
     }
 
     const triggerEl = await resolveOrMarkNeedsReview(
-      field.selector[0].value, fieldLabel, 'selector 解析不到觸發元素，可能已失效，請重新綁定這個欄位'
+      primarySelector[0].value, fieldLabel, 'selector 解析不到觸發元素，可能已失效，請重新綁定這個欄位'
     );
     if (!triggerEl) return null;
 
@@ -328,8 +364,11 @@
       markNeedsReview(fieldLabel, '找不到附件上傳欄位，請手動上傳', triggerEl);
       return null;
     }
+    // 確認上傳按鈕本身不需要祖先鏈反推，這裡直接解析錄製時記下的元素。找不到也不擋住主流程，
+    // 因為按鈕是選填的，沒綁定確認按鈕的網站（台北/新北）要維持現有行為不變。
+    const confirmButtonEl = confirmItem ? await resolveWithRetry(confirmItem.value) : null;
     summaryLines.push(`ℹ️ ${fieldLabel}：請按下面「選擇附件並上傳」按鈕選取檔案`);
-    return { mode: 'file-trigger', baseInput, triggerEl };
+    return { mode: 'file-trigger', baseInput, triggerEl, confirmButtonEl };
   }
 
   async function run() {

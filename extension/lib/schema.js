@@ -24,6 +24,22 @@ export const LOCATION_ROLES = ['district', 'road', 'remainder'];
 // 避免像 FIELD_LABELS 那樣各自維護出分岔。
 export const LOCATION_ROLE_LABELS = { district: '行政區', road: '路名', remainder: '其餘' };
 
+// 票券 02 新增：evidenceImages 的 selector item 可選標記 role，供高雄這類「選檔後還要再按一次
+// 獨立『上傳』按鈕才會生效」的網站，額外綁定那顆確認鈕。跟 LOCATION_ROLES 是各自獨立的列舉，
+// 只在 evidenceImages 欄位下合法（見 validateProfile 的 role 檢查）。
+export const EVIDENCE_ROLES = ['confirm-upload'];
+export const EVIDENCE_ROLE_LABELS = { 'confirm-upload': '確認上傳按鈕' };
+
+// 「把確認上傳按鈕 item 跟主要的檔案輸入 item 分開」是 validateProfile 本身、fill-mode.js
+// 解析上傳目標、mapping-mode.js 面板顯示/測試填入共用的同一組拆分邏輯，抽出來避免各自維護
+// 一份一樣的 filter/find（見票券 02 code review）。confirmItem 一律最多 1 個，找不到回傳
+// null，呼叫端自行決定要不要視為錯誤。
+export function partitionEvidenceSelector(selector) {
+  const confirmItem = selector.find((item) => item && item.role === 'confirm-upload') || null;
+  const primaryItems = selector.filter((item) => !(item && item.role === 'confirm-upload'));
+  return { confirmItem, primaryItems };
+}
+
 // select/custom 一律是風險欄位（PLAN.md）。kind 掛在每個 selector item 上而不是欄位層級，
 // 因為同一個邏輯欄位常常混合不同 kind 的真實 DOM 元素（例如台北市「違規地點」裡，行政區的
 // 觸發元件是 custom，但路名／公里／巷／弄卻是可以直接賦值的 plain）——欄位層級只存一個 kind
@@ -108,16 +124,36 @@ export function validateProfile(profile) {
         if (!item || item.value === undefined) {
           errors.push(`欄位 ${name} 第 ${idx} 個 selector item 缺少 value`);
         }
-        if (item && item.role !== undefined && !LOCATION_ROLES.includes(item.role)) {
-          errors.push(`欄位 ${name} 第 ${idx} 個 selector item 的 role 不合法`);
+        // role 的合法值依欄位而異：location 用 LOCATION_ROLES，evidenceImages 用 EVIDENCE_ROLES
+        // （票券 02 的確認上傳按鈕），其餘欄位一律不接受 role。
+        if (item && item.role !== undefined) {
+          const validRoles = name === 'location' ? LOCATION_ROLES : (name === 'evidenceImages' ? EVIDENCE_ROLES : []);
+          if (!validRoles.includes(item.role)) {
+            errors.push(`欄位 ${name} 第 ${idx} 個 selector item 的 role 不合法`);
+          }
         }
       });
       if (hasRiskyItem && field.riskField !== true) {
         errors.push(`欄位 ${name} 含有 select/custom 的 selector item，riskField 必須是 true`);
       }
+      // 確認上傳按鈕（role: 'confirm-upload'，票券 02）是跟主要檔案輸入分開維護的獨立 item，
+      // 不計入下面 file-trigger 的「固定只能 1 個」規則，但它自己最多只能綁 1 個；且只能搭配
+      // 剛好 1 個主要 item（不限 file-trigger 或 file-slots——高雄 fl_File 是單一 multiple
+      // input，使用者直接點選它會被記錄成單一個 file-slots item，實測發現原本「只能搭配
+      // file-trigger」的限制擋住了這個真實案例，見票券 02 使用者手動驗收回報；真正不相容的是
+      // 臺南/桃園那種 2 個以上各自獨立槽位的 file-slots，那種情境沒有「再按一次上傳鈕」的
+      // 中間步驟）；也不能只綁確認按鈕、沒有任何主要輸入 item。
+      const { confirmItem, primaryItems } = partitionEvidenceSelector(field.selector);
+      const confirmUploadItems = field.selector.filter((item) => item && item.role === 'confirm-upload');
+      if (confirmUploadItems.length > 1) {
+        errors.push(`欄位 ${name} 的確認上傳按鈕最多只能綁定 1 個 item`);
+      }
+      if (confirmItem && primaryItems.length !== 1) {
+        errors.push(`欄位 ${name} 的確認上傳按鈕只能搭配剛好 1 個主要 item`);
+      }
       // file-trigger 只綁觸發按鈕本身（PLAN_B.md「已定案設計」第 1 點），執行期靠祖先鏈演算法
       // 反推真正的上傳 input，不需要（也不支援）多個觸發按鈕，固定只允許 1 個 item。
-      if (field.selector.some((item) => item && item.kind === 'file-trigger') && field.selector.length !== 1) {
+      if (primaryItems.some((item) => item && item.kind === 'file-trigger') && primaryItems.length !== 1) {
         errors.push(`欄位 ${name} 的 file-trigger selector 只能有 1 個 item`);
       }
       // file-slots（臺南/桃園：頁面載入時就固定存在 N 個獨立原生 input[type=file]）反過來

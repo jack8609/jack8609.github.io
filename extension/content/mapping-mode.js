@@ -13,7 +13,10 @@
     import(chrome.runtime.getURL('lib/selector.js')),
     import(chrome.runtime.getURL('content/selector-resolve.js'))
   ]);
-  const { LOGICAL_FIELDS, createEmptyProfile, upsertField, removeField, LOCATION_ROLES, LOCATION_ROLE_LABELS, FIELD_LABELS } = schemaMod;
+  const {
+    LOGICAL_FIELDS, createEmptyProfile, upsertField, removeField, LOCATION_ROLES, LOCATION_ROLE_LABELS,
+    EVIDENCE_ROLE_LABELS, FIELD_LABELS, partitionEvidenceSelector
+  } = schemaMod;
   const { createProfileStore } = storageMod;
   const { siteIdFromHostname, originPatternFromUrl } = siteMod;
   const { buildSelectorCandidates, detectFieldKind, labelRelativeCandidateMatches, buildAttributeFingerprint } = selectorMod;
@@ -98,6 +101,8 @@
           warn.textContent = `${item.kind}:${text} [⚠️ 未標角色]`;
           container.appendChild(warn);
         }
+      } else if (fieldName === 'evidenceImages' && item.role === 'confirm-upload') {
+        container.appendChild(document.createTextNode(`${item.kind}:${text} [${EVIDENCE_ROLE_LABELS[item.role]}]`));
       } else {
         container.appendChild(document.createTextNode(`${item.kind}:${text}`));
       }
@@ -170,11 +175,32 @@
       addBtn.title = '同一邏輯欄位對應多個 DOM 元素時使用（例如車牌兩段）';
       // evidenceImages 的 file-trigger 固定只允許 1 個 item（PLAN_B.md），沒有「多綁一個」的
       // 情境；file-slots（票券 01：固定多槽位附件）則相反，需要依序多次點選才能綁滿 N 個槽位，
-      // 只在這個 kind 底下才開放「+ 新增元素」。
+      // 只在這個 kind 底下才開放「+ 新增元素」。已經綁了確認上傳鈕（票券 02）時也要停用：
+      // 確認上傳鈕只能搭配剛好 1 個主要 item，再新增下去會被 schema.js 擋下存檔。
       const isFileTriggerField = fieldName === 'evidenceImages' && field && field.selector[0].kind === 'file-trigger';
-      addBtn.disabled = !field || isFileTriggerField;
+      const hasConfirmUploadBound = fieldName === 'evidenceImages' && field &&
+        field.selector.some((item) => item.role === 'confirm-upload');
+      addBtn.disabled = !field || isFileTriggerField || hasConfirmUploadBound;
       addBtn.addEventListener('click', () => startPicking(fieldName, true));
       li.appendChild(addBtn);
+
+      // 確認上傳按鈕（票券 02：高雄選檔後還要再按一次獨立的「上傳」鈕才會生效）是 evidenceImages
+      // 專屬、選填的額外綁定，跟上面「+ 新增元素」（綁多個主要檔案輸入）分開一顆按鈕，避免混在一起。
+      // 只有主要 item 剛好 1 個時才開放這顆按鈕：不限 file-trigger 或 file-slots——高雄 fl_File
+      // 是單一 multiple input，使用者直接點選它會被記錄成單一個 file-slots item，若卡在只認
+      // file-trigger 會讓這個真實案例綁不了確認鈕（見票券 02 使用者手動驗收回報）；臺南/桃園那種
+      // 2 個以上各自獨立槽位的 file-slots 才是真正不相容（見 schema.js 的 validateProfile）。
+      if (fieldName === 'evidenceImages' && field) {
+        const { confirmItem, primaryItems } = partitionEvidenceSelector(field.selector);
+        if (primaryItems.length === 1) {
+          const confirmBtn = document.createElement('button');
+          confirmBtn.type = 'button';
+          confirmBtn.textContent = confirmItem ? '重新綁定確認上傳鈕' : '+ 綁定確認上傳鈕（選填）';
+          confirmBtn.title = '部分網站（例如高雄）選好檔案後還需要再按一次獨立的「上傳」按鈕才會生效，這裡可選填綁定那顆按鈕';
+          confirmBtn.addEventListener('click', () => startPicking(fieldName, false, 'confirm-upload'));
+          li.appendChild(confirmBtn);
+        }
+      }
 
       if (field) {
         const clearBtn = document.createElement('button');
@@ -191,14 +217,16 @@
     if (pickingField) {
       const hint = document.createElement('div');
       hint.className = 'vh-mapping-hint';
-      hint.textContent =
-        `請在頁面上點選「${FIELD_LABELS[pickingField.fieldName] || pickingField.fieldName}」對應的欄位（按 Esc 取消）`;
+      const targetLabel = FIELD_LABELS[pickingField.fieldName] || pickingField.fieldName;
+      hint.textContent = pickingField.role === 'confirm-upload'
+        ? `請在頁面上點選「${targetLabel}」的確認上傳按鈕（按 Esc 取消）`
+        : `請在頁面上點選「${targetLabel}」對應的欄位（按 Esc 取消）`;
       body.appendChild(hint);
     }
   }
 
-  function startPicking(fieldName, append) {
-    pickingField = { fieldName, append };
+  function startPicking(fieldName, append, role) {
+    pickingField = { fieldName, append, role };
     renderPanel();
   }
 
@@ -323,10 +351,18 @@
       : `⚠️ 只找到 ${foundCount}/${items.length} 個附件欄位，可能有 selector 已失效`;
   }
 
+  // 確認上傳按鈕（票券 02）是額外、選填的 item，跟主要的檔案輸入 item 分開驗證——不能混進
+  // summarizeFileSlotsTestFill/summarizeFileTriggerTestFill 的計數，否則會誤判成槽位/觸發
+  // 元件失效。
   function summarizeEvidenceImagesTestFill(items) {
-    return items[0] && items[0].kind === 'file-slots'
-      ? summarizeFileSlotsTestFill(items)
-      : summarizeFileTriggerTestFill(items);
+    const { confirmItem, primaryItems } = partitionEvidenceSelector(items);
+    if (!primaryItems.length) return '⚠️ 尚未綁定主要的附件輸入欄位';
+    const primarySummary = primaryItems[0].kind === 'file-slots'
+      ? summarizeFileSlotsTestFill(primaryItems)
+      : summarizeFileTriggerTestFill(primaryItems);
+    if (!confirmItem) return primarySummary;
+    const confirmFound = !!resolveSelectorItem(confirmItem.value);
+    return `${primarySummary}｜${EVIDENCE_ROLE_LABELS['confirm-upload']}：${confirmFound ? '已解析' : '⚠️ 找不到'}`;
   }
 
   // 每個 selector item 各自的 kind 決定要不要模擬填值——同一個邏輯欄位常常混合 custom 跟
@@ -566,6 +602,9 @@
     // 檔案 input 是 DOM 手足關係，一般邏輯找不到這種關係，反而會誤判或抓空（見 PLAN_B.md
     // 「已定案設計」第 1 點）。
     const isEvidenceField = pickingField.fieldName === 'evidenceImages';
+    // 確認上傳按鈕（票券 02）是對 evidenceImages 額外、分開綁定的選填 item，不是主要的
+    // 檔案輸入 item。
+    const isConfirmUploadPick = isEvidenceField && pickingField.role === 'confirm-upload';
     const el = isEvidenceField ? rawEl : normalizePickTarget(rawEl);
     const context = { nearbySelectedValues: collectNearbySelectedValues(el) };
     // <input type=button/submit> 沒有可用的文字內容/id/name 時（新北市「新增檔案」按鈕正是這種
@@ -629,10 +668,13 @@
       transform = await promptDateTransform();
     }
 
-    // location 欄位才需要角色標記，理由見 showLocationRoleModal() 上方註解。
+    // location 欄位才需要角色標記，理由見 showLocationRoleModal() 上方註解；確認上傳按鈕
+    // （票券 02）的 role 則是依 pickingField.role 直接指定，不需要再問使用者。
     let role;
     if (!isEvidenceField && fieldName === 'location') {
       role = await showLocationRoleModal();
+    } else if (isConfirmUploadPick) {
+      role = 'confirm-upload';
     }
 
     const existing = profile.fields[fieldName];
@@ -644,13 +686,29 @@
       ...(transform ? { transform } : {}),
       ...(role ? { role } : {})
     };
-    // evidenceImages 的 file-trigger 固定只允許 1 個 item（PLAN_B.md），不支援 append；
-    // file-slots（票券 01）則相反，依序點選多個固定 input 時要逐一累加進 selector 陣列——
-    // 但只在既有綁定也全部是 file-slots 時才累加，避免跟舊的 file-trigger 綁定混在一起。
-    const canAppendFileSlots = kind === 'file-slots' && append && existing &&
-      existing.selector.every((item) => item.kind === 'file-slots');
-    const canAppendOtherField = !isEvidenceField && append && existing;
-    const selector = (canAppendFileSlots || canAppendOtherField) ? [...existing.selector, newItem] : [newItem];
+    // 確認上傳按鈕（票券 02）跟主要的檔案輸入 item 分開維護：重新綁定/新增主要 item 時不能把
+    // 現有確認按鈕一起覆蓋掉，反之亦然；確認按鈕固定放在 selector 陣列最後，讓
+    // field.selector[0] 永遠是主要 item（resolveEvidenceUploadTarget 與
+    // summarizeEvidenceImagesTestFill 都靠這個假設判斷模式）。
+    const { confirmItem: existingConfirmItem, primaryItems: existingPrimaryItems } =
+      existing ? partitionEvidenceSelector(existing.selector) : { confirmItem: null, primaryItems: [] };
+    let selector;
+    if (isConfirmUploadPick) {
+      selector = [...existingPrimaryItems, newItem];
+    } else {
+      // evidenceImages 的 file-trigger 固定只允許 1 個 item（PLAN_B.md），不支援 append；
+      // file-slots（票券 01）則相反，依序點選多個固定 input 時要逐一累加進 selector 陣列——
+      // 但只在既有綁定也全部是 file-slots 時才累加，避免跟舊的 file-trigger 綁定混在一起。
+      const canAppendFileSlots = kind === 'file-slots' && append && existingPrimaryItems.length > 0 &&
+        existingPrimaryItems.every((item) => item.kind === 'file-slots');
+      const canAppendOtherField = !isEvidenceField && append && existingPrimaryItems.length > 0;
+      const primaryItems = (canAppendFileSlots || canAppendOtherField) ? [...existingPrimaryItems, newItem] : [newItem];
+      // 確認上傳鈕只能搭配剛好 1 個主要 item（schema.js 的 validateProfile）；重新綁定/新增主要
+      // item 若讓主要 item 數量變成不是 1（例如從單一 fl_File 再新增第 2 個 file-slots 槽位），
+      // 既有確認上傳鈕就不相容，不能沿用，直接跟著這次的綁定丟棄。
+      const keepExistingConfirmItem = existingConfirmItem && primaryItems.length === 1;
+      selector = keepExistingConfirmItem ? [...primaryItems, existingConfirmItem] : primaryItems;
+    }
 
     profile = upsertField(profile, fieldName, { selector });
     await store.saveProfile(profile);

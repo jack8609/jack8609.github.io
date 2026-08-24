@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-const { LOGICAL_FIELDS, createEmptyProfile, upsertField, removeField, validateProfile } =
+const { LOGICAL_FIELDS, createEmptyProfile, upsertField, removeField, validateProfile, partitionEvidenceSelector } =
   await import('../lib/schema.js');
 
 assert.deepEqual(LOGICAL_FIELDS, [
@@ -217,6 +217,148 @@ assert.deepEqual(LOGICAL_FIELDS, [
     fieldOrder: ['date', 'evidenceImages']
   };
   assert.deepEqual(validateProfile(withSingleFileSlot), { valid: true, errors: [] }, 'file-slots 也允許只綁 1 個 item');
+
+  // 票券 02 新增：evidenceImages 的確認上傳按鈕 role（高雄兩段式上傳，選檔後需再按一次獨立
+  // 的「上傳」鈕），跟主要的 file-trigger item 分開維護，不計入 file-trigger 只能 1 個 item
+  // 的規則。
+  const withConfirmUploadButton = {
+    ...good,
+    fields: {
+      date: good.fields.date,
+      evidenceImages: {
+        riskField: false,
+        selector: [
+          { kind: 'file-trigger', value: '#add-file-btn' },
+          { kind: 'file-trigger', value: '#btnMailFile', role: 'confirm-upload' }
+        ]
+      }
+    },
+    fieldOrder: ['date', 'evidenceImages']
+  };
+  assert.deepEqual(
+    validateProfile(withConfirmUploadButton), { valid: true, errors: [] },
+    'confirm-upload role 不計入 file-trigger 只能 1 個 item 的限制'
+  );
+
+  const withTwoConfirmUploadButtons = {
+    ...good,
+    fields: {
+      date: good.fields.date,
+      evidenceImages: {
+        riskField: false,
+        selector: [
+          { kind: 'file-trigger', value: '#add-file-btn' },
+          { kind: 'file-trigger', value: '#btnA', role: 'confirm-upload' },
+          { kind: 'file-trigger', value: '#btnB', role: 'confirm-upload' }
+        ]
+      }
+    },
+    fieldOrder: ['date', 'evidenceImages']
+  };
+  assert.strictEqual(
+    validateProfile(withTwoConfirmUploadButtons).valid, false, '確認上傳按鈕最多只能綁定 1 個 item'
+  );
+
+  const withConfirmUploadRoleOnOtherField = {
+    ...good,
+    fields: {
+      date: { ...good.fields.date, selector: [{ kind: 'plain', value: '#d', role: 'confirm-upload' }] }
+    },
+    fieldOrder: ['date']
+  };
+  assert.strictEqual(
+    validateProfile(withConfirmUploadRoleOnOtherField).valid, false, 'confirm-upload role 只能用在 evidenceImages 欄位'
+  );
+
+  // 確認上傳按鈕可以搭配單一個 file-slots 主要 item（高雄 fl_File 是單一 multiple input，
+  // 使用者直接點選它會被記錄成單一個 file-slots item，實測發現原本「不支援 file-slots」的
+  // 限制擋住了這個真實案例，見票券 02 使用者手動驗收回報）。
+  const withConfirmUploadOnSingleFileSlot = {
+    ...good,
+    fields: {
+      date: good.fields.date,
+      evidenceImages: {
+        riskField: false,
+        selector: [
+          { kind: 'file-slots', value: '#fl_File' },
+          { kind: 'file-trigger', value: '#btnMailFile', role: 'confirm-upload' }
+        ]
+      }
+    },
+    fieldOrder: ['date', 'evidenceImages']
+  };
+  assert.deepEqual(
+    validateProfile(withConfirmUploadOnSingleFileSlot), { valid: true, errors: [] },
+    '確認上傳按鈕可以搭配剛好 1 個 file-slots 主要 item'
+  );
+
+  // 確認上傳按鈕不能搭配 2 個以上的 file-slots 主要 item（臺南/桃園那種各自獨立槽位選檔即
+  // 直接生效，沒有「再按一次上傳鈕」這個中間步驟；見票券 02 code review）。
+  const withConfirmUploadOnMultipleFileSlots = {
+    ...good,
+    fields: {
+      date: good.fields.date,
+      evidenceImages: {
+        riskField: false,
+        selector: [
+          { kind: 'file-slots', value: '#Upfile1' },
+          { kind: 'file-slots', value: '#Upfile2' },
+          { kind: 'file-trigger', value: '#btnMailFile', role: 'confirm-upload' }
+        ]
+      }
+    },
+    fieldOrder: ['date', 'evidenceImages']
+  };
+  assert.strictEqual(
+    validateProfile(withConfirmUploadOnMultipleFileSlots).valid, false, '確認上傳按鈕不能搭配 2 個以上的主要 item'
+  );
+
+  // 只綁確認上傳按鈕、沒有任何主要的檔案輸入 item 也要擋下來，不是有意義的狀態。
+  const withOnlyConfirmUploadButton = {
+    ...good,
+    fields: {
+      date: good.fields.date,
+      evidenceImages: {
+        riskField: false,
+        selector: [{ kind: 'file-trigger', value: '#btnMailFile', role: 'confirm-upload' }]
+      }
+    },
+    fieldOrder: ['date', 'evidenceImages']
+  };
+  assert.strictEqual(
+    validateProfile(withOnlyConfirmUploadButton).valid, false, '不能只綁確認上傳按鈕、沒有主要的檔案輸入 item'
+  );
+}
+
+// partitionEvidenceSelector：跟主要檔案輸入 item 分開拆出確認上傳按鈕 item 的共用純函式
+// （票券 02，schema.js/fill-mode.js/mapping-mode.js 三處共用，避免各自維護一份 filter/find）。
+{
+  const withConfirm = [
+    { kind: 'file-trigger', value: '#add-file-btn' },
+    { kind: 'file-trigger', value: '#btnMailFile', role: 'confirm-upload' }
+  ];
+  assert.deepEqual(
+    partitionEvidenceSelector(withConfirm),
+    { confirmItem: withConfirm[1], primaryItems: [withConfirm[0]] },
+    '要把確認上傳按鈕 item 跟主要 item 分開'
+  );
+
+  const withoutConfirm = [{ kind: 'file-trigger', value: '#add-file-btn' }];
+  assert.deepEqual(
+    partitionEvidenceSelector(withoutConfirm),
+    { confirmItem: null, primaryItems: withoutConfirm },
+    '沒有確認上傳按鈕時 confirmItem 要回傳 null，primaryItems 是整個陣列'
+  );
+
+  const multiSlots = [
+    { kind: 'file-slots', value: '#Upfile1' },
+    { kind: 'file-slots', value: '#Upfile2' }
+  ];
+  assert.deepEqual(
+    partitionEvidenceSelector(multiSlots),
+    { confirmItem: null, primaryItems: multiSlots },
+    'file-slots 多個 item 且沒有確認按鈕時全部都算主要 item'
+  );
 }
 
 // upsertField：file-trigger kind 不是風險 kind，跟 select/custom 不同，riskField 沿用呼叫端指定值（預設 false）
