@@ -1,6 +1,6 @@
 // 欄位對應表（Field Mapping Profile）schema，定案內容見 extension/PLAN.md。
 export const LOGICAL_FIELDS = [
-  'violation', 'plate', 'date', 'time', 'location', 'description', 'evidenceImages'
+  'date', 'time', 'plate', 'location', 'description', 'violation', 'evidenceImages'
 ];
 
 // 兩個 content script（mapping-mode.js 的面板、fill-mode.js 的結果彙總）都需要一樣的中文顯示名稱，
