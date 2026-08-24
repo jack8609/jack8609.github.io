@@ -6,7 +6,9 @@
   z-index: 2147483000;
   width: 320px;
   max-height: 80vh;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   background: #1e1e2e;
   color: #f5f5f5;
   font-family: -apple-system, "Segoe UI", "Noto Sans TC", sans-serif;
@@ -22,10 +24,18 @@
 }
 
 #vh-mapping-panel .vh-mapping-title {
+  flex: 0 0 auto;
   font-weight: 600;
   margin-bottom: 8px;
   cursor: move;
   user-select: none;
+}
+
+/* 標題以下（清單/按鈕/提示）獨立捲動，拖曳把手（標題）本身永遠留在可視範圍內。 */
+#vh-mapping-panel .vh-mapping-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 #vh-mapping-panel .vh-mapping-list {
