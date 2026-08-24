@@ -4,7 +4,7 @@ const { LOGICAL_FIELDS, createEmptyProfile, upsertField, removeField, validatePr
   await import('../lib/schema.js');
 
 assert.deepEqual(LOGICAL_FIELDS, [
-  'violation', 'plate', 'date', 'time', 'location', 'description', 'evidenceImages'
+  'date', 'time', 'plate', 'location', 'description', 'violation', 'evidenceImages'
 ]);
 
 // createEmptyProfile
@@ -188,6 +188,35 @@ assert.deepEqual(LOGICAL_FIELDS, [
     fieldOrder: ['date', 'evidenceImages']
   };
   assert.strictEqual(validateProfile(withTwoFileTriggers).valid, false, 'evidenceImages 的 file-trigger selector 固定只能有 1 個 item');
+
+  // 票券 01 新增：evidenceImages 的 file-slots kind（臺南/桃園固定多槽位附件），不像
+  // file-trigger 限制只能 1 個 item，允許依序綁定多個固定 input。
+  const withFileSlots = {
+    ...good,
+    fields: {
+      date: good.fields.date,
+      evidenceImages: {
+        riskField: false,
+        selector: [
+          { kind: 'file-slots', value: '#Upfile1' },
+          { kind: 'file-slots', value: '#Upfile2' },
+          { kind: 'file-slots', value: '#Upfile3' }
+        ]
+      }
+    },
+    fieldOrder: ['date', 'evidenceImages']
+  };
+  assert.deepEqual(validateProfile(withFileSlots), { valid: true, errors: [] }, 'file-slots 是合法 kind，且允許多個 item');
+
+  const withSingleFileSlot = {
+    ...good,
+    fields: {
+      date: good.fields.date,
+      evidenceImages: { riskField: false, selector: [{ kind: 'file-slots', value: '#Upfile1' }] }
+    },
+    fieldOrder: ['date', 'evidenceImages']
+  };
+  assert.deepEqual(validateProfile(withSingleFileSlot), { valid: true, errors: [] }, 'file-slots 也允許只綁 1 個 item');
 }
 
 // upsertField：file-trigger kind 不是風險 kind，跟 select/custom 不同，riskField 沿用呼叫端指定值（預設 false）
@@ -197,6 +226,18 @@ assert.deepEqual(LOGICAL_FIELDS, [
     selector: [{ kind: 'file-trigger', value: '#add-file-btn' }]
   });
   assert.strictEqual(withEvidence.fields.evidenceImages.riskField, false, 'file-trigger 欄位預設非風險欄位');
+}
+
+// upsertField：file-slots kind 一樣不是風險 kind，多個 item 也一樣預設非風險欄位
+{
+  const base = createEmptyProfile({ siteId: 's1', displayName: 'S1', matchPatterns: ['*://s1/*'] });
+  const withEvidence = upsertField(base, 'evidenceImages', {
+    selector: [
+      { kind: 'file-slots', value: '#Upfile1' },
+      { kind: 'file-slots', value: '#Upfile2' }
+    ]
+  });
+  assert.strictEqual(withEvidence.fields.evidenceImages.riskField, false, 'file-slots 欄位預設非風險欄位');
 }
 
 

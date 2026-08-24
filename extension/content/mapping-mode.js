@@ -146,8 +146,11 @@
       addBtn.type = 'button';
       addBtn.textContent = '+ 新增元素';
       addBtn.title = '同一邏輯欄位對應多個 DOM 元素時使用（例如車牌兩段）';
-      // evidenceImages 固定只允許 1 個 file-trigger item（PLAN_B.md），沒有「多綁一個」的情境。
-      addBtn.disabled = !field || fieldName === 'evidenceImages';
+      // evidenceImages 的 file-trigger 固定只允許 1 個 item（PLAN_B.md），沒有「多綁一個」的
+      // 情境；file-slots（票券 01：固定多槽位附件）則相反，需要依序多次點選才能綁滿 N 個槽位，
+      // 只在這個 kind 底下才開放「+ 新增元素」。
+      const isFileTriggerField = fieldName === 'evidenceImages' && field && field.selector[0].kind === 'file-trigger';
+      addBtn.disabled = !field || isFileTriggerField;
       addBtn.addEventListener('click', () => startPicking(fieldName, true));
       li.appendChild(addBtn);
 
@@ -304,6 +307,21 @@
     return fileInput ? '找到附件觸發元件，已解析出上傳欄位' : '找不到對應的上傳欄位';
   }
 
+  // file-slots 專用（票券 01：.scratch/six-cities-mapping/issues/01-file-slots-evidence-upload.md）：
+  // 每個 item 都是直接綁定的固定 input，不需要祖先鏈反推，只需要逐一驗證能否解析回元素。
+  function summarizeFileSlotsTestFill(items) {
+    const foundCount = items.filter((item) => !!resolveSelectorItem(item.value)).length;
+    return foundCount === items.length
+      ? `找到全部 ${items.length} 個附件欄位`
+      : `⚠️ 只找到 ${foundCount}/${items.length} 個附件欄位，可能有 selector 已失效`;
+  }
+
+  function summarizeEvidenceImagesTestFill(items) {
+    return items[0] && items[0].kind === 'file-slots'
+      ? summarizeFileSlotsTestFill(items)
+      : summarizeFileTriggerTestFill(items);
+  }
+
   // 每個 selector item 各自的 kind 決定要不要模擬填值——同一個邏輯欄位常常混合 custom 跟
   // plain 的真實元素（例如台北市「違規地點」：行政區的觸發元件是 custom，路名/公里/巷/弄
   // 卻是可以直接賦值的 plain），不能再假設整個欄位只有一種 kind（見 handlePick 旁的註解，
@@ -312,7 +330,7 @@
   // 這裡也要跟真實填表邏輯（fill-mode.js）一致改視同 custom（只驗證找不找得到元素、不假裝
   // 填值成功），避免對這兩個欄位顯示假的「已填入測試值」（見 spec.md「測試填入假資料一致性」）。
   function summarizeTestFill(fieldName, items) {
-    if (fieldName === 'evidenceImages') return summarizeFileTriggerTestFill(items);
+    if (fieldName === 'evidenceImages') return summarizeEvidenceImagesTestFill(items);
     const fillable = [];
     const nonFillable = [];
     items.forEach((item, idx) => {
@@ -540,8 +558,8 @@
     // <input type=button>），不套用一般「往內/往外找可填值控制項」正規化——觸發按鈕跟真正的
     // 檔案 input 是 DOM 手足關係，一般邏輯找不到這種關係，反而會誤判或抓空（見 PLAN_B.md
     // 「已定案設計」第 1 點）。
-    const isFileTrigger = pickingField.fieldName === 'evidenceImages';
-    const el = isFileTrigger ? rawEl : normalizePickTarget(rawEl);
+    const isEvidenceField = pickingField.fieldName === 'evidenceImages';
+    const el = isEvidenceField ? rawEl : normalizePickTarget(rawEl);
     const context = { nearbySelectedValues: collectNearbySelectedValues(el) };
     // <input type=button/submit> 沒有可用的文字內容/id/name 時（新北市「新增檔案」按鈕正是這種
     // 案例），value 屬性是它的靜態按鈕文字，比單靠 type 屬性的指紋更能避免跟頁面上其他同類型
@@ -571,7 +589,11 @@
       const sameFingerprintEls = Array.from(document.querySelectorAll(fingerprintForOrdinal));
       info.attributeFingerprintOrdinal = sameFingerprintEls.indexOf(el);
     }
-    const kind = isFileTrigger ? 'file-trigger' : detectFieldKind(info);
+    // evidenceImages 點到原生 input[type=file] 本身，代表這是臺南/桃園那種頁面載入時就固定
+    // 存在的多槽位附件（file-slots，票券 01）；點到其他元素（例如按鈕）才視為需要祖先鏈反推
+    // 真正上傳 input 的觸發元件（file-trigger，沿用既有行為）。
+    const isFileSlotInput = isEvidenceField && el.tagName === 'INPUT' && (el.getAttribute('type') || '').toLowerCase() === 'file';
+    const kind = isEvidenceField ? (isFileSlotInput ? 'file-slots' : 'file-trigger') : detectFieldKind(info);
     const candidates = buildSelectorCandidates(info);
     // 錄製當下就對整份文件驗證候選 selector 的命中數是否唯一，而不是等事後人工比對才發現不唯一。
     const descriptor = pickUniqueDescriptor(candidates);
@@ -587,7 +609,7 @@
     const { fieldName, append } = pickingField;
 
     let valueMap;
-    if (!isFileTrigger && kind === 'select' && el.tagName === 'SELECT') {
+    if (!isEvidenceField && kind === 'select' && el.tagName === 'SELECT') {
       const options = Array.from(el.options || []).map((o) => o.textContent.trim()).filter(Boolean);
       if (options.length) valueMap = await showValueMapModal(options);
     }
@@ -596,13 +618,13 @@
     // 不限 kind === 'plain'——台北市違規日期實際是 Vuetify 點選式（kind: 'custom'），一樣需要
     // 選格式（見 spec.md 問題 5：填值時走點擊選單流程，比對的是這裡選出來的目標文字）。
     let transform;
-    if (!isFileTrigger && fieldName === 'date') {
+    if (!isEvidenceField && fieldName === 'date') {
       transform = await promptDateTransform();
     }
 
     // location 欄位才需要角色標記，理由見 showLocationRoleModal() 上方註解。
     let role;
-    if (!isFileTrigger && fieldName === 'location') {
+    if (!isEvidenceField && fieldName === 'location') {
       role = await showLocationRoleModal();
     }
 
@@ -615,8 +637,13 @@
       ...(transform ? { transform } : {}),
       ...(role ? { role } : {})
     };
-    // evidenceImages 固定只允許 1 個 file-trigger item（PLAN_B.md），不支援 append。
-    const selector = (!isFileTrigger && append && existing) ? [...existing.selector, newItem] : [newItem];
+    // evidenceImages 的 file-trigger 固定只允許 1 個 item（PLAN_B.md），不支援 append；
+    // file-slots（票券 01）則相反，依序點選多個固定 input 時要逐一累加進 selector 陣列——
+    // 但只在既有綁定也全部是 file-slots 時才累加，避免跟舊的 file-trigger 綁定混在一起。
+    const canAppendFileSlots = kind === 'file-slots' && append && existing &&
+      existing.selector.every((item) => item.kind === 'file-slots');
+    const canAppendOtherField = !isEvidenceField && append && existing;
+    const selector = (canAppendFileSlots || canAppendOtherField) ? [...existing.selector, newItem] : [newItem];
 
     profile = upsertField(profile, fieldName, { selector });
     await store.saveProfile(profile);

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 
-const { planEvidenceInjection, findGrownAncestorLevel, findNewChild } = await import('../content/evidence-upload.js');
+const { planEvidenceInjection, findGrownAncestorLevel, findNewChild, planFileSlotsInjection } =
+  await import('../content/evidence-upload.js');
 
 // planEvidenceInjection：純決策邏輯，只讀 baseInput.multiple 與 files 陣列，不碰 DOM，
 // 用假物件測試即可（見 .scratch/chrome-extension-p3-evidence-upload/issues/02-taipei-auto-upload.md）。
@@ -73,6 +74,44 @@ const { planEvidenceInjection, findGrownAncestorLevel, findNewChild } = await im
 {
   const nodeA = { id: 'a' };
   assert.strictEqual(findNewChild([nodeA], [nodeA]), null, '找不到新節點時要回傳 null');
+}
+
+// planFileSlotsInjection：票券 01 新增，file-slots 專屬純決策邏輯（臺南 6 槽/桃園 5 槽固定
+// input），只讀槽位數與檔案陣列，不碰 DOM。
+
+// 檔案數剛好等於槽位數：第 i 個檔案對應第 i 個槽位，無溢出。
+{
+  const files = [{ name: 'a.jpg' }, { name: 'b.jpg' }, { name: 'c.jpg' }];
+  assert.deepEqual(
+    planFileSlotsInjection(3, files),
+    { assignments: [{ slotIndex: 0, file: files[0] }, { slotIndex: 1, file: files[1] }, { slotIndex: 2, file: files[2] }], overflowCount: 0 },
+    '檔案數等於槽位數時依序一一對應，無溢出'
+  );
+}
+
+// 檔案數少於槽位數（臺南 6 槽只選 2 個檔案）：只填有對應檔案的前 2 個槽位，其餘槽位不動。
+{
+  const files = [{ name: 'a.jpg' }, { name: 'b.jpg' }];
+  assert.deepEqual(
+    planFileSlotsInjection(6, files),
+    { assignments: [{ slotIndex: 0, file: files[0] }, { slotIndex: 1, file: files[1] }], overflowCount: 0 },
+    '檔案數少於槽位數時只填有對應檔案的槽位'
+  );
+}
+
+// 檔案數超過槽位數（桃園 5 槽選了 7 個檔案）：多出的檔案不猜測塞進不存在的槽位，只回報溢出數量。
+{
+  const files = Array.from({ length: 7 }, (_, i) => ({ name: `f${i}.jpg` }));
+  const result = planFileSlotsInjection(5, files);
+  assert.strictEqual(result.assignments.length, 5, '只指派到槽位數上限，多出的不猜測塞入');
+  assert.strictEqual(result.overflowCount, 2, '溢出數量要明確回報，讓呼叫端告知使用者');
+}
+
+// 未選擇任何檔案：不論槽位數多少都一樣回報沒有檔案，無溢出。
+{
+  assert.deepEqual(planFileSlotsInjection(6, []), { assignments: [], overflowCount: 0 }, '空陣列要回傳空 assignments');
+  assert.deepEqual(planFileSlotsInjection(6, null), { assignments: [], overflowCount: 0 }, 'null 要回傳空 assignments');
+  assert.deepEqual(planFileSlotsInjection(6, undefined), { assignments: [], overflowCount: 0 }, 'undefined 要回傳空 assignments');
 }
 
 console.log('extension-evidence-upload-contract.test.mjs OK');

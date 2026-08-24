@@ -170,6 +170,21 @@ const { resolveOptionMatch, applyDateTransform, buildFillPlan } = await import('
   const fileTriggerPlan = buildFillPlan(sourceData, fileTriggerProfile);
   assert.equal(fileTriggerPlan[0].items[0].skipReason, 'unsupported-kind');
 
+  // kind: 'file-slots'（票券 01：臺南/桃園固定多槽位附件）同樣一律 skip——這個欄位走
+  // resolveEvidenceUploadTarget() 的 file-slots 分支，不套用這裡的一般 applyItem 賦值邏輯。
+  const fileSlotsProfile = {
+    fieldOrder: ['evidenceImages'],
+    fields: {
+      evidenceImages: {
+        riskField: false,
+        selector: [{ kind: 'file-slots', value: '#Upfile1' }, { kind: 'file-slots', value: '#Upfile2' }]
+      }
+    }
+  };
+  const fileSlotsPlan = buildFillPlan(sourceData, fileSlotsProfile);
+  assert.equal(fileSlotsPlan[0].items[0].skipReason, 'unsupported-kind');
+  assert.equal(fileSlotsPlan[0].items[1].skipReason, 'unsupported-kind');
+
   // kind: 'custom' 的 date 欄位（台北市違規日期，Vuetify 點選式）不再靜默跳過——套用 transform 後
   // 照樣產生 targetValue，實際要不要走點擊選單流程由 content/fill-mode.js 依元素是否在 Vuetify
   // 容器內判斷，這裡的純決策邏輯不需要知道 kind 是 custom 還是 plain。

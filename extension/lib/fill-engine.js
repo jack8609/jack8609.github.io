@@ -85,11 +85,14 @@ function buildLocationItemPlan(item, sourceData) {
 // 這點沒有另外存 schema metadata，是延續 P1 就存在的既有假設，不是這裡新增的規則。
 function buildItemPlan(fieldName, item, index, sourceData) {
   // 'file'：泛用的原生檔案 input（一般欄位手動綁定成這個 kind 時）；'file-trigger'：evidenceImages
-  // 專用（PLAN_B.md），綁定的是觸發按鈕本身。兩者都不套用這裡的一般賦值邏輯——evidenceImages
-  // 實際上走 content/fill-mode.js 的 resolveEvidenceUploadTarget() 專用流程（票券 02），這裡只是
+  // 專用（PLAN_B.md），綁定的是觸發按鈕本身；'file-slots'：evidenceImages 專用（票券 01，臺南/桃園
+  // 固定多槽位附件），綁定的是固定 input 本身。三者都不套用這裡的一般賦值邏輯——evidenceImages
+  // 實際上走 content/fill-mode.js 的 resolveEvidenceUploadTarget() 專用流程（票券 02/01），這裡只是
   // 確保 buildFillPlan 對它的分類正確，不會落到下面 fieldName 對不上任何已知欄位時的
   // 'no-source-value' 預設分支（那個訊息文案跟附件上傳的實際情況不符）。
-  if (item.kind === 'file' || item.kind === 'file-trigger') return { item, skipReason: 'unsupported-kind' };
+  if (item.kind === 'file' || item.kind === 'file-trigger' || item.kind === 'file-slots') {
+    return { item, skipReason: 'unsupported-kind' };
+  }
 
   if (fieldName === 'location') return buildLocationItemPlan(item, sourceData);
 

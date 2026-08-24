@@ -10,7 +10,7 @@ export const FIELD_LABELS = {
   location: '違規地點', description: '地點/事實備註', evidenceImages: '證據影像上傳'
 };
 
-const FIELD_KINDS = ['plain', 'select', 'custom', 'file', 'file-trigger'];
+const FIELD_KINDS = ['plain', 'select', 'custom', 'file', 'file-trigger', 'file-slots'];
 
 // P2 新增：location 欄位的 selector item 可選標記 role，讓自動填表引擎知道「這個子元素是行政區/
 // 路名/其餘地址片段」——來源網站只有一個完整地址字串，沒有 role 標記的 item（例如台北市公里/
@@ -120,6 +120,8 @@ export function validateProfile(profile) {
       if (field.selector.some((item) => item && item.kind === 'file-trigger') && field.selector.length !== 1) {
         errors.push(`欄位 ${name} 的 file-trigger selector 只能有 1 個 item`);
       }
+      // file-slots（臺南/桃園：頁面載入時就固定存在 N 個獨立原生 input[type=file]）反過來
+      // 允許多個 item，每個 item 各自直接綁定一個固定 input，不像 file-trigger 需要祖先鏈反推。
     }
   }
   if (Array.isArray(profile.fieldOrder) && profile.fields) {

@@ -122,3 +122,26 @@ export function injectFilesIncrementally(baseInput, triggerEl, files) {
   });
   return { failedIndexes };
 }
+
+// file-slots（臺南 Upfile1~6、桃園 files1~5，票券 01：
+// .scratch/six-cities-mapping/issues/01-file-slots-evidence-upload.md）：頁面載入時就固定存在
+// N 個獨立、非 multiple 的原生 input[type=file]，不像 file-trigger 需要祖先鏈反推、也不像
+// assign-all 一次塞進單一 multiple input，是「第 i 個選定檔案對應第 i 個綁定槽位」的直接賦值。
+
+// 純決策邏輯（不碰 DOM）：依綁定的槽位數與使用者選定的檔案數量，決定每個檔案要指定給第幾個槽位。
+// 檔案數超過槽位數時，多出的檔案不猜測塞進不存在的槽位，只回報數量讓呼叫端明確告知使用者；
+// 檔案數少於槽位數時，只填有對應檔案的槽位，其餘槽位維持原狀不動。
+export function planFileSlotsInjection(slotCount, files) {
+  if (!files || files.length === 0) return { assignments: [], overflowCount: 0 };
+  const assignedFiles = files.slice(0, slotCount);
+  const assignments = assignedFiles.map((file, slotIndex) => ({ slotIndex, file }));
+  return { assignments, overflowCount: Math.max(0, files.length - slotCount) };
+}
+
+// DOM 副作用：依 planFileSlotsInjection 的結果，把每個檔案賦值進對應槽位的固定 input 並各自
+// dispatch change（沿用 injectFilesIntoInput，不需要新的賦值機制）。
+export function injectFilesIntoSlots(slotInputs, files) {
+  const { assignments, overflowCount } = planFileSlotsInjection(slotInputs.length, files);
+  assignments.forEach(({ slotIndex, file }) => injectFilesIntoInput(slotInputs[slotIndex], [file]));
+  return { filledCount: assignments.length, overflowCount };
+}

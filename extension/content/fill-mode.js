@@ -31,7 +31,7 @@
   const { resolveSelectorItem, setNativeValue, hasVuetifyDropdownWrapper, resolveFileTriggerInput } = resolveMod;
   const { fillVuetifyDropdown } = vuetifyMod;
   const { extractRoadNamePrefix } = addressParserMod;
-  const { promptForEvidenceFiles, planEvidenceInjection, injectFilesIntoInput, injectFilesIncrementally } = evidenceUploadMod;
+  const { promptForEvidenceFiles, planEvidenceInjection, injectFilesIntoInput, injectFilesIncrementally, injectFilesIntoSlots } = evidenceUploadMod;
 
   const store = createProfileStore(chrome.storage.local);
 
@@ -44,13 +44,24 @@
   // 附件上傳按鈕（見 showAlertModal 的 evidenceTarget 參數）點下去才觸發原生選檔視窗：這顆
   // 按鈕本身的點擊是全新、合法的 user gesture，不像填表流程尾端那樣可能已經失去手勢資格
   // （PLAN_B.md/spec.md 記錄的技術風險，這是已定案的 fallback 設計，見票券 02「背景」段落）。
-  async function uploadEvidenceFiles({ baseInput, triggerEl }, statusEl) {
+  async function uploadEvidenceFiles(evidenceTarget, statusEl) {
     const files = await promptForEvidenceFiles();
-    const injectionPlan = planEvidenceInjection(baseInput, files);
-    if (injectionPlan.action === 'no-files') {
+    if (files.length === 0) {
       statusEl.textContent = '⚠️ 未選擇任何檔案，請手動上傳';
       return;
     }
+    // file-slots（臺南/桃園固定多槽位附件，票券 01）：依序把第 i 個選定的檔案指定給第 i 個
+    // 綁定槽位，跟 file-trigger 站的祖先鏈反推/逐一點擊觸發按鈕完全是不同的注入方式。
+    if (evidenceTarget.mode === 'file-slots') {
+      const { filledCount, overflowCount } = injectFilesIntoSlots(evidenceTarget.slotInputs, files);
+      const lines = [`✅ 已選定 ${files.length} 個檔案，成功上傳 ${filledCount} 個`];
+      if (overflowCount > 0) lines.push(`⚠️ 有 ${overflowCount} 個檔案超過可綁定的欄位數，請手動上傳`);
+      statusEl.style.whiteSpace = 'pre-line';
+      statusEl.textContent = lines.join('\n');
+      return;
+    }
+    const { baseInput, triggerEl } = evidenceTarget;
+    const injectionPlan = planEvidenceInjection(baseInput, files);
     if (injectionPlan.action === 'assign-all') {
       injectFilesIntoInput(baseInput, injectionPlan.files);
       statusEl.textContent = `✅ 已選定 ${injectionPlan.files.length} 個檔案並上傳`;
@@ -284,6 +295,28 @@
     if (!field) return null;
     const fieldLabel = FIELD_LABELS.evidenceImages;
 
+    // file-slots（臺南/桃園固定多槽位附件，票券 01：
+    // .scratch/six-cities-mapping/issues/01-file-slots-evidence-upload.md）：每個 item 直接
+    // 綁定一個固定 input，不像 file-trigger 需要祖先鏈反推，逐一解析即可。
+    if (field.selector[0].kind === 'file-slots') {
+      const slotInputs = [];
+      for (const item of field.selector) {
+        const input = await resolveWithRetry(item.value);
+        if (input) slotInputs.push(input);
+      }
+      if (!slotInputs.length) {
+        markNeedsReview(fieldLabel, '找不到任何附件上傳欄位，可能已失效，請重新綁定這個欄位', null);
+        return null;
+      }
+      if (slotInputs.length < field.selector.length) {
+        markNeedsReview(
+          fieldLabel, `只找到 ${slotInputs.length}/${field.selector.length} 個附件欄位，部分槽位可能已失效`, null
+        );
+      }
+      summaryLines.push(`ℹ️ ${fieldLabel}：請按下面「選擇附件並上傳」按鈕選取檔案`);
+      return { mode: 'file-slots', slotInputs };
+    }
+
     const triggerEl = await resolveOrMarkNeedsReview(
       field.selector[0].value, fieldLabel, 'selector 解析不到觸發元素，可能已失效，請重新綁定這個欄位'
     );
@@ -296,7 +329,7 @@
       return null;
     }
     summaryLines.push(`ℹ️ ${fieldLabel}：請按下面「選擇附件並上傳」按鈕選取檔案`);
-    return { baseInput, triggerEl };
+    return { mode: 'file-trigger', baseInput, triggerEl };
   }
 
   async function run() {
