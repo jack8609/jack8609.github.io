@@ -31,11 +31,39 @@
   user-select: none;
 }
 
-/* 標題以下（清單/按鈕/提示）獨立捲動，拖曳把手（標題）本身永遠留在可視範圍內。 */
+/* 標題以下（清單/提示）獨立捲動，拖曳把手（標題）跟操作按鈕本身永遠留在可視範圍內。 */
 #vh-mapping-panel .vh-mapping-body {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  /* 保留捲軸寬度，避免細窄捲軸疊在項目最右側的按鈕上（見票券回報）。 */
+  padding-right: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+/* 預設透明、只有滑鼠移到內容區或正在捲動時才顯示捲軸，維持面板版面乾淨。 */
+#vh-mapping-panel .vh-mapping-body:hover,
+#vh-mapping-panel .vh-mapping-body:focus-within {
+  scrollbar-color: #55556e transparent;
+}
+
+#vh-mapping-panel .vh-mapping-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+#vh-mapping-panel .vh-mapping-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#vh-mapping-panel .vh-mapping-body::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 3px;
+}
+
+#vh-mapping-panel .vh-mapping-body:hover::-webkit-scrollbar-thumb,
+#vh-mapping-panel .vh-mapping-body:focus-within::-webkit-scrollbar-thumb {
+  background: #55556e;
 }
 
 #vh-mapping-panel .vh-mapping-list {
@@ -97,8 +125,13 @@
 }
 
 #vh-mapping-panel .vh-mapping-actions {
+  flex: 0 0 auto;
   display: flex;
   justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #3a3a4a;
 }
 
 #vh-mapping-panel .vh-mapping-hint {
