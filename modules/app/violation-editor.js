@@ -90,6 +90,13 @@ function resetViolationDropdowns(root) {
   violationSelect.disabled = true;
 }
 
+function appendOption(select, text) {
+  const opt = document.createElement('option');
+  opt.value = text;
+  opt.textContent = text;
+  select.appendChild(opt);
+}
+
 function populateViolationDropdowns(root, violationData, options = {}) {
   const citySelect = root.querySelector('#city-select');
   const violationSelect = root.querySelector('#ve-violation');
@@ -97,23 +104,13 @@ function populateViolationDropdowns(root, violationData, options = {}) {
   const cityKeys = Object.keys(violationData);
   const defaultCity = options.defaultCity || cityKeys[0] || '';
 
-  cityKeys.forEach((city) => {
-    const opt = document.createElement('option');
-    opt.value = city;
-    opt.textContent = city;
-    citySelect.appendChild(opt);
-  });
+  cityKeys.forEach((city) => appendOption(citySelect, city));
 
   citySelect.addEventListener('change', () => {
     const items = resolveEffectiveViolationItems(violationData, citySelect.value);
     violationSelect.innerHTML = '<option value="">選擇違規項目</option>';
     if (items.length > 0) {
-      items.forEach((text) => {
-        const opt = document.createElement('option');
-        opt.value = text;
-        opt.textContent = text;
-        violationSelect.appendChild(opt);
-      });
+      items.forEach((text) => appendOption(violationSelect, text));
       violationSelect.disabled = false;
     } else {
       violationSelect.disabled = true;
