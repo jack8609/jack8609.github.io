@@ -45,10 +45,9 @@ py -m http.server 4173 --bind 127.0.0.1
 - `plate-ocr/plate-ocr.js`
 - `opencv/`
 - `tesseract/`
-- `violation_list.js`
 - `coi-serviceworker.min.js`
 
-`violation_list.js` 是一般 script。違規編輯器建立 `#city-select` 與 `#ve-violation` 後，才可以呼叫 `window.initViolationDropdowns()`。
+違規項目下拉選單的初始化邏輯已合併進 `violation-editor.js`（見下方模組清單），不再有獨立的 `violation_list.js`/`window.initViolationDropdowns`。資料本身放在兩個位置的 `violation-items.txt`（見「違規項目資料檔」一節），`violation-editor.js` 建立 `#city-select` 與 `#ve-violation` 後會非同步抓取並合併這兩份清單。
 
 `index.html` head 的一般 script 會在初始繪製前讀取警語保存時間並隱藏 overlay。它不是 ESM，必須保留其位置與行為。
 
@@ -82,7 +81,7 @@ py -m http.server 4173 --bind 127.0.0.1
 | `disclaimer.js` | `initializeDisclaimer()` | 警語捲動解鎖、接受後淡出、30 天保存。 |
 | `theme.js` | `initializeTheme()` | 保存或系統主題判定、切換、`data-theme` 與標籤同步。 |
 | `ocr-integration.js` | `initializeOcrIntegration()`，`services.ocr` | OCR script 串流下載、進度、引擎執行、車牌回填與 busy 保護。 |
-| `violation-editor.js` | `initializeViolationEditor(root)`，`modules.violationEditor` | 違規表單、輸出句、複製、OCR toggle 保存與預熱。 |
+| `violation-editor.js` | `initializeViolationEditor(root)`，`modules.violationEditor` | 違規表單、輸出句、複製、OCR toggle 保存與預熱、違規項目下拉清單（抓取＋合併兩個 `violation-items.txt`）。 |
 | `ffmpeg-service.js` | `initializeFfmpegService()`，`services.ffmpeg` | ESM 入口、SW 等待、FFmpeg 實例、核心載入、log/progress 轉送。 |
 | `timeline.js` | `initializeTimeline()`，`services.timeline` | metadata、播放時間、雙滑桿、預覽跳轉與選取色帶。 |
 | `snapshot-editor.js` | `createSnapshotEditor()`，`modules.editorLite` | EditorLite 所有 Canvas、繪圖、裁切、產圖與清單私有狀態。 |
@@ -168,6 +167,14 @@ if (typeof PlateOCR !== 'undefined') {
 - `video-actions.js` 只使用 EditorLite 的三個公開方法，不得讀取 Canvas 私有狀態。
 - 替換縮圖時，已初始化的 editor 必須使用 `loadSnapshot(url)`，不要重建 editor。
 
+### 違規項目資料檔（`violation-items.txt`）
+
+- 兩個位置都會被 `violation-editor.js` 非同步抓取、合併：跟隨程式碼的 `modules/app/violation-items.txt`（隨版本控管、視為官方預設基準清單）與專案 root 的 `violation-items.txt`（與 `index.html` 同目錄，供之後不改程式碼即可自行新增/調整項目）。
+- 合併策略：以 `modules/app/` 那份為基底，root 那份逐項「附加」；同一縣市底下文字完全相同的項目自動跳過，不會出現重複選項。
+- 檔案格式：`# 縣市名稱` 開新分類，其後每行一個違規項目文字（不需要引號或逗號）；空白行忽略；分類標題底下若沒有任何項目就不會成立，因此可以安心把純文字說明也用 `#` 開頭寫在檔案裡。
+- `通用` 是特殊分類：所有縣市的下拉選單都會自動聯集「通用＋該縣市專屬項目」；`通用` 本身也可以直接被選取。
+- 讀取相容 UTF-8（含 BOM）與 Big5 編碼、CRLF/LF/CR 換行，解析失敗或抓不到檔案時視為空清單，不會讓整個違規編輯器掛掉。
+
 ## 驗證
 
 執行所有語法、契約與 CRLF 相容 diff 檢查：
@@ -219,10 +226,12 @@ if (typeof PlateOCR !== 'undefined') {
 ```text
 index.html                 Page shell and single bootstrap script
 modules/app/               Application ESM modules
+modules/app/violation-items.txt
+                           Baseline violation dropdown list (bundled with code)
+violation-items.txt        Project-root violation dropdown list (beside index.html)
 ffmpeg/, core/             FFmpeg wrapper and WebAssembly runtime
 plate-ocr/, opencv/, tesseract/
                            OCR engine assets
-violation_list.js          Violation dropdown data and initializer
 tests/                     Per-module Node contract tests
 tools/                     PowerShell syntax and aggregate validators
 doc/PROJECT_SPEC.md        This handover specification
