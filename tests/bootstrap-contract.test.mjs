@@ -47,6 +47,6 @@ for (const call of startupCalls) {
 assert.doesNotMatch(bootstrapSource, /window\.App|window\.state/);
 assert.match(indexSource, /<script type="module">\s*import \{ bootstrap \} from '\.\/modules\/app\/bootstrap\.js';\s*await bootstrap\(\);\s*<\/script>/);
 assert.match(indexSource, /<script>\s*\(function\(\)/);
-assert.match(indexSource, /<script src="\.\/violation_list\.js"><\/script>/);
+assert.doesNotMatch(indexSource, /violation_list\.js/);
 
 console.log('bootstrap contract passed');

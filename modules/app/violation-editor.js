@@ -1,3 +1,137 @@
+const VIOLATION_ITEMS_FILENAME = 'violation-items.txt';
+const COMMON_VIOLATION_CITY = '通用';
+
+// 位元組層級解碼：先試 UTF-8，若亂碼比例過高（例如檔案其實是 Big5）才改用 Big5 重解，
+// 兩者都失敗時回傳 UTF-8 的盡力結果，不讓整份清單因編碼問題直接掛掉。
+export function decodeViolationItemsBuffer(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let text = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+  const replacementCount = (text.match(/\uFFFD/g) || []).length;
+  if (text.length > 0 && replacementCount / text.length > 0.02) {
+    try {
+      text = new TextDecoder('big5', { fatal: false }).decode(bytes);
+    } catch {
+      // 執行環境不支援 Big5 解碼器時，維持 UTF-8 的盡力結果。
+    }
+  }
+  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+}
+
+// 格式：「# 縣市名稱」開新分類，其後每行一個項目文字；空白行忽略；相容 CRLF/LF/CR 換行。
+// 分類標題只有在底下真的出現至少一個項目時才會成立，讓檔案裡可安心放置純文字說明/註解。
+export function parseViolationItemsText(text) {
+  const result = {};
+  let currentCity = null;
+  const lines = String(text ?? '').split(/\r\n|\r|\n/);
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    if (line.startsWith('#')) {
+      currentCity = line.slice(1).trim() || null;
+      continue;
+    }
+    if (!currentCity) continue;
+    if (!result[currentCity]) result[currentCity] = [];
+    if (!result[currentCity].includes(line)) result[currentCity].push(line);
+  }
+  return result;
+}
+
+// 添加策略：base（跟隨程式碼的預設清單）優先，extra（root 位置、供人工後續維護）逐項附加，
+// 同一縣市底下文字完全相同的項目直接跳過，不出現重複選項。
+export function mergeViolationData(base, extra) {
+  const merged = {};
+  for (const city of Object.keys(base || {})) merged[city] = [...base[city]];
+  for (const city of Object.keys(extra || {})) {
+    if (!merged[city]) merged[city] = [];
+    for (const item of extra[city]) {
+      if (!merged[city].includes(item)) merged[city].push(item);
+    }
+  }
+  return merged;
+}
+
+// 「通用」分類對所有縣市都適用；選單顯示某縣市時＝通用項目＋該縣市專屬項目。
+function resolveEffectiveViolationItems(violationData, city) {
+  if (!city) return [];
+  if (city === COMMON_VIOLATION_CITY) return violationData[COMMON_VIOLATION_CITY] || [];
+  const commonItems = violationData[COMMON_VIOLATION_CITY] || [];
+  const cityItems = violationData[city] || [];
+  return [...commonItems, ...cityItems.filter((item) => !commonItems.includes(item))];
+}
+
+async function fetchViolationItemsText(url) {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return '';
+    return decodeViolationItemsBuffer(await response.arrayBuffer());
+  } catch {
+    return '';
+  }
+}
+
+// 兩個位置都抓：跟隨程式碼（modules/app/）與專案 root（index.html 所在目錄），採添加策略合併。
+async function loadViolationData() {
+  const codeUrl = new URL(`./${VIOLATION_ITEMS_FILENAME}`, import.meta.url);
+  const rootUrl = new URL(`./${VIOLATION_ITEMS_FILENAME}`, document.baseURI);
+  const [codeText, rootText] = await Promise.all([
+    fetchViolationItemsText(codeUrl),
+    fetchViolationItemsText(rootUrl)
+  ]);
+  return mergeViolationData(parseViolationItemsText(codeText), parseViolationItemsText(rootText));
+}
+
+function resetViolationDropdowns(root) {
+  const citySelect = root.querySelector('#city-select');
+  const violationSelect = root.querySelector('#ve-violation');
+  if (!citySelect || !violationSelect) return;
+  citySelect.innerHTML = '<option value="">選擇縣市</option>';
+  violationSelect.innerHTML = '<option value="">選擇違規項目</option>';
+  violationSelect.disabled = true;
+}
+
+function populateViolationDropdowns(root, violationData, options = {}) {
+  const citySelect = root.querySelector('#city-select');
+  const violationSelect = root.querySelector('#ve-violation');
+  if (!citySelect || !violationSelect) return;
+  const cityKeys = Object.keys(violationData);
+  const defaultCity = options.defaultCity || cityKeys[0] || '';
+
+  cityKeys.forEach((city) => {
+    const opt = document.createElement('option');
+    opt.value = city;
+    opt.textContent = city;
+    citySelect.appendChild(opt);
+  });
+
+  citySelect.addEventListener('change', () => {
+    const items = resolveEffectiveViolationItems(violationData, citySelect.value);
+    violationSelect.innerHTML = '<option value="">選擇違規項目</option>';
+    if (items.length > 0) {
+      items.forEach((text) => {
+        const opt = document.createElement('option');
+        opt.value = text;
+        opt.textContent = text;
+        violationSelect.appendChild(opt);
+      });
+      violationSelect.disabled = false;
+    } else {
+      violationSelect.disabled = true;
+    }
+  });
+
+  if (defaultCity && violationData[defaultCity]) {
+    citySelect.value = defaultCity;
+    citySelect.dispatchEvent(new Event('change'));
+  }
+}
+
+async function initViolationDropdowns(root, options = {}) {
+  resetViolationDropdowns(root);
+  const violationData = await loadViolationData();
+  populateViolationDropdowns(root, violationData, options);
+}
+
 export function initializeViolationEditor(root) {
   const { config, modules, services, state, utils } = window.ViolationHelper;
   const { toast } = utils;
@@ -179,5 +313,7 @@ export function initializeViolationEditor(root) {
     }, 0);
   }
 
-  if (window.initViolationDropdowns) window.initViolationDropdowns();
+  return initViolationDropdowns(root).catch((error) => {
+    utils.errlog('違規項目清單載入失敗', error);
+  });
 }
