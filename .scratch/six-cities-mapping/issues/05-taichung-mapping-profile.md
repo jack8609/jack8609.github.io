@@ -9,16 +9,16 @@
 
 **Blocked by：** None — can start immediately.
 
-**Status:** in-progress（引擎擴充已 commit，等待使用者手動綁定＋真實瀏覽器驗收）
+**Status:** done
 
 ## 驗收標準
 
 - [x] `fill-engine.js` 新增 `westernToMinguoCompact` 日期轉換與 `time` 欄位單一 item 合併賦值邏輯，並補 contract test（含 hour/minute 其中之一缺值時應回傳 `no-source-value`、不猜測的邊界案例）。
 - [x] `mapping-mode.js` 的 `promptDateTransform()` 新增「民國緊湊數字格式（例如 1150817）」選項。
-- [ ] 對應模式（mapping-mode）綁定臺中網站全部 7 個邏輯欄位，其中 `location` 依 `district`/`road`/`remainder` role 正確標記，`evidenceImages` 綁定為 `file-trigger`，`date` 綁定時選擇「民國緊湊數字格式」，`time` 只綁定 1 個元素。
-- [ ] `violation` 欄位（條文具體、非籠統分類）能正確用文字比對/模糊比對選到選項。
-- [ ] 使用者已用真實瀏覽器完整跑過一次自動填表（測試假資料），確認所有欄位皆正確填入（`date` 為 7 碼民國數字、`time` 為 4 碼合併數字）、`evidenceImages` 能自動上傳多個檔案。
-- [ ] 重新整理頁面後，已綁定的 mapping profile 仍在。
+- [x] 對應模式（mapping-mode）綁定臺中網站全部 7 個邏輯欄位，其中 `location` 依 `district`/`road`/`remainder` role 正確標記，`evidenceImages` 綁定為 `file-trigger`，`date` 綁定時選擇「民國緊湊數字格式」，`time` 只綁定 1 個元素。
+- [x] `violation` 欄位（條文具體、非籠統分類）能正確用文字比對/模糊比對選到選項。
+- [x] 使用者已用真實瀏覽器完整跑過一次自動填表（測試假資料），確認所有欄位皆正確填入（`date` 為 7 碼民國數字、`time` 為 4 碼合併數字）、`evidenceImages` 能自動上傳多個檔案。
+- [x] 重新整理頁面後，已綁定的 mapping profile 仍在。
 - [x] 既有 + 新增 extension contract test 全綠（9 個 extension contract test）。
 
 ## 需要使用者手動驗收的項目
