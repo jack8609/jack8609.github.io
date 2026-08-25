@@ -140,6 +140,28 @@
     body.className = 'vh-mapping-body';
     panel.appendChild(body);
 
+    // 「測試填入假資料」/「完成」跟標題一樣固定在頂部，不隨清單捲動，避免每次都要先捲到最下面才按得到。
+    const actions = document.createElement('div');
+    actions.className = 'vh-mapping-actions';
+    const testFillBtn = document.createElement('button');
+    testFillBtn.type = 'button';
+    testFillBtn.textContent = '測試填入假資料';
+    testFillBtn.title = '用目前已綁定的 selector 嘗試在頁面上填入假資料，驗證是否真的能定位到欄位（純前端模擬，不會送出表單）';
+    testFillBtn.addEventListener('click', runTestFill);
+    actions.appendChild(testFillBtn);
+    const doneBtn = document.createElement('button');
+    doneBtn.type = 'button';
+    doneBtn.textContent = '完成';
+    doneBtn.addEventListener('click', teardown);
+    actions.appendChild(doneBtn);
+    panel.appendChild(actions);
+
+    // 標題列固定不動，下面才是可捲動區塊（見 mapping-mode.css 的 flex 版面），避免面板拉高、
+    // 捲到下方對應欄位時標題（拖曳把手）被遮住還要先捲回頂端才能移動視窗。
+    const body = document.createElement('div');
+    body.className = 'vh-mapping-body';
+    panel.appendChild(body);
+
     const list = document.createElement('ul');
     list.className = 'vh-mapping-list';
     for (const fieldName of LOGICAL_FIELDS) {
@@ -212,6 +234,7 @@
 
       list.appendChild(li);
     }
+    body.appendChild(list);
     body.appendChild(list);
 
     if (pickingField) {

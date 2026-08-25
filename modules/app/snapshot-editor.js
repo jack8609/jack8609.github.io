@@ -1190,13 +1190,12 @@ export function createSnapshotEditor() {
 
       /* ===== Final Image Generation ===== */
       function generateReportImage() {
-        if (!videoEl?.src) return;
-        videoEl.pause();
-        finalCanvas.width = videoEl.videoWidth;
-        finalCanvas.height = videoEl.videoHeight;
+        if (!staticImage?.src || staticImage.naturalWidth === 0) return;
+        finalCanvas.width = staticImage.naturalWidth;
+        finalCanvas.height = staticImage.naturalHeight;
         const ctx = finalCanvas.getContext('2d');
-        // Base frame
-        ctx.drawImage(videoEl, 0, 0, finalCanvas.width, finalCanvas.height);
+        // Base frame：沿用擷取縮圖當下凍結的畫面，而非即時 video 目前畫面
+        ctx.drawImage(staticImage, 0, 0, finalCanvas.width, finalCanvas.height);
         // Mosaic on final
         applyMosaicOnFinal(ctx);
         // Shapes
