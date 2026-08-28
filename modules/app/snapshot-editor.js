@@ -795,7 +795,7 @@ export function createSnapshotEditor() {
           });
           ctx.restore();
         }
-        if (plateImageInMemory) drawPlateOnCanvas(ctx, drawingOverlay.width, drawingOverlay.height, true);
+        if (plateImageInMemory) drawPlateOnCanvas(ctx, staticImage.clientWidth, staticImage.clientHeight, true);
       }
 
       /* ===== Plate Paste ===== */
@@ -1059,8 +1059,8 @@ export function createSnapshotEditor() {
         if (!drawnShapes.length) return;
         let scaleX = 1, scaleY = 1;
         if (!isOverlay) {
-          const displayW = staticImage.clientWidth || drawingOverlay.width || finalW;
-          const displayH = staticImage.clientHeight || drawingOverlay.height || finalH;
+          const displayW = staticImage.clientWidth || finalW;
+          const displayH = staticImage.clientHeight || finalH;
           scaleX = finalW / displayW;
           scaleY = finalH / displayH;
         }
@@ -1407,7 +1407,7 @@ export function createSnapshotEditor() {
 
       function drawMosaicOverlay(ctx) {
         if (!staticImage || staticImage.naturalWidth === 0) return;
-        const ow = drawingOverlay.width, oh = drawingOverlay.height;
+        const ow = staticImage.clientWidth, oh = staticImage.clientHeight;
         const scaleX = staticImage.naturalWidth / ow;
         const scaleY = staticImage.naturalHeight / oh;
         mosaicItems.forEach(mz => {
@@ -1433,8 +1433,8 @@ export function createSnapshotEditor() {
         if (!mosaicItems.length) return;
         const c = ctxFinal.canvas;
         const finalW = c.width, finalH = c.height;
-        const displayW = staticImage.clientWidth || drawingOverlay.width || finalW;
-        const displayH = staticImage.clientHeight || drawingOverlay.height || finalH;
+        const displayW = staticImage.clientWidth || finalW;
+        const displayH = staticImage.clientHeight || finalH;
         const scaleX = finalW / displayW, scaleY = finalH / displayH;
 
         mosaicItems.forEach(mz => {
@@ -1473,8 +1473,8 @@ export function createSnapshotEditor() {
         drawPlateOnCanvas(ctx, finalCanvas.width, finalCanvas.height, false);
         // Text
         if (textItems.length) {
-          const displayW = staticImage.clientWidth || drawingOverlay.width || finalCanvas.width;
-          const displayH = staticImage.clientHeight || drawingOverlay.height || finalCanvas.height;
+          const displayW = staticImage.clientWidth || finalCanvas.width;
+          const displayH = staticImage.clientHeight || finalCanvas.height;
           const scaleX = finalCanvas.width / displayW, scaleY = finalCanvas.height / displayH;
           ctx.save();
           textItems.forEach(t => {
