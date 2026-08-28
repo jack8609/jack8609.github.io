@@ -159,6 +159,15 @@ export function createSnapshotEditor() {
       let dragOrigX = 0, dragOrigY = 0;
       const textDragThreshold = 5;       // 小於此像素視為「點一下」→ 進入編輯
 
+      // Shape dragging / arrow endpoint editing state（方框/圓框/箭頭：整體拖曳＋箭頭端點縮放）
+      let isShapeDragging = false;
+      let dragShape = null;               // 命中的 drawnShapes 物件本身
+      let dragShapeMode = 'body';         // 'body' | 'start' | 'end'（body=整體位移，start/end=箭頭端點）
+      let shapeDragStartX = 0, shapeDragStartY = 0;
+      let shapeDragOrig = null;           // 命中當下該物件的 startX/startY/endX/endY 快照
+      const shapeHitTolerance = 8;        // 點擊框線/箭頭線身的容忍誤差(px)
+      const shapeEndpointTolerance = 10;  // 點擊箭頭端點把手的容忍誤差(px)
+
       // Options UI elements
       let toolSelect = null;
       let textSize = null;
@@ -194,6 +203,13 @@ export function createSnapshotEditor() {
       }
 
       function setTool(mode) {
+        if (mode !== 'shape' && dragShape) {
+          // 切離 shape 工具時，清除選取把手狀態，避免殘留視覺提示
+          isShapeDragging = false;
+          dragShape = null;
+          shapeDragOrig = null;
+          drawOverlayContent();
+        }
         toolMode = mode;
         if (mode !== 'plate') lastNonPlateTool = mode;
         setOverlayInteractive(mode !== 'plate');
@@ -386,7 +402,7 @@ export function createSnapshotEditor() {
         // Shape
         const shapeLabel = document.createElement('label'); shapeLabel.textContent = '形狀'; shapeLabel.style.color = 'var(--fg)';
         drawingShapeSelect = document.createElement('select'); drawingShapeSelect.id = 'drawingShape';
-        drawingShapeSelect.innerHTML = `<option value="rectangle">方框</option><option value="circle">圓框</option>`;
+        drawingShapeSelect.innerHTML = `<option value="rectangle">方框</option><option value="circle">圓框</option><option value="arrow">箭頭</option>`;
         shapeGroup.append(shapeLabel, drawingShapeSelect);
 
         // Thickness
@@ -408,7 +424,7 @@ export function createSnapshotEditor() {
         toolSelect = document.createElement('select'); toolSelect.id = 'toolMode';
         toolSelect.innerHTML = `
           <option value="plate">選取車牌</option>
-          <option value="shape">紅框</option>
+          <option value="shape">框線/箭頭</option>
           <option value="text">文字</option>
           <option value="mosaic">馬賽克</option>
         `;
@@ -462,28 +478,28 @@ export function createSnapshotEditor() {
           drawingOverlay.addEventListener('pointerdown', (e) => {
             if (!isPrimaryPointer(e) || toolMode === 'plate') return;
             e.preventDefault(); e.stopPropagation();
-            if (toolMode === 'shape')  startUserDrawing(e);
+            if (toolMode === 'shape')  onShapePointerDown(e);
             else if (toolMode === 'mosaic') startMosaic(e, mosaicRange ? Number(mosaicRange.value) : 12);
             else if (toolMode === 'text') onTextPointerDown(e);
           });
 
           drawingOverlay.addEventListener('pointermove', (e) => {
             if (!isPrimaryPointer(e) || toolMode === 'plate') return;
-            if (toolMode === 'shape')  drawUserMoving(e);
+            if (toolMode === 'shape')  { if (isDrawing) drawUserMoving(e); else onShapePointerMove(e); }
             else if (toolMode === 'mosaic') drawMosaicMoving(e);
             else if (toolMode === 'text') onTextPointerMove(e);
           });
 
           drawingOverlay.addEventListener('pointerup', (e) => {
             if (!isPrimaryPointer(e) || toolMode === 'plate') return;
-            if (toolMode === 'shape')  stopUserDrawing(e);
+            if (toolMode === 'shape')  { if (isDrawing) stopUserDrawing(e); else onShapePointerUp(e); }
             else if (toolMode === 'mosaic') stopMosaic(e);
             else if (toolMode === 'text') onTextPointerUp(e);
           });
 
           drawingOverlay.addEventListener('pointercancel', (e) => {
             if (!isPrimaryPointer(e) || toolMode === 'plate') return;
-            if (toolMode === 'shape')  stopUserDrawing(e);
+            if (toolMode === 'shape')  { if (isDrawing) stopUserDrawing(e); else onShapePointerUp(e); }
             else if (toolMode === 'mosaic') stopMosaic(e);
             else if (toolMode === 'text') onTextPointerUp(e);
           });
@@ -515,7 +531,12 @@ export function createSnapshotEditor() {
       function undoLastShape() {
         if (textItems.length)     { textItems.pop(); drawOverlayContent(); return; }
         if (mosaicItems.length)   { mosaicItems.pop(); drawOverlayContent(); return; }
-        if (drawnShapes.length)   { drawnShapes.pop(); drawOverlayContent(); return; }
+        if (drawnShapes.length)   {
+          const removed = drawnShapes.pop();
+          if (dragShape === removed) { dragShape = null; isShapeDragging = false; shapeDragOrig = null; }
+          drawOverlayContent();
+          return;
+        }
       }
 
       function clearAllEdits() {
@@ -531,6 +552,9 @@ export function createSnapshotEditor() {
         currentShape = null;
         isMosaicDrawing = false;
         mosaicCurrent = null;
+        isShapeDragging = false;
+        dragShape = null;
+        shapeDragOrig = null;
         try { clearPlateCrop(); } catch {}
         if (selectionBox) selectionBox.style.display = 'none';
         setOverlayInteractive(true);
@@ -758,6 +782,7 @@ export function createSnapshotEditor() {
           const displayH = staticImage.clientHeight;
           drawAllUserShapes(ctx, displayW, displayH, true);
         }
+        if (dragShape) drawShapeSelectionHandles(ctx, dragShape);
         if (textItems.length) {
           ctx.save();
           textItems.forEach(t => {
@@ -770,7 +795,21 @@ export function createSnapshotEditor() {
           });
           ctx.restore();
         }
-        if (plateImageInMemory) drawPlateOnCanvas(ctx, drawingOverlay.width, drawingOverlay.height, true);
+        if (plateImageInMemory) {
+          // 車牌特寫框的基準尺寸「必須」與箭頭/文字/馬賽克等其他圖層在編輯區使用的
+          // 基準完全一致（staticImage.clientWidth/clientHeight），不可改用
+          // drawingOverlay.width/height（canvas 繪圖表面尺寸屬性）。
+          // 原因：drawingOverlay.width/height 是在 setupDrawingOverlay()／
+          // ResizeObserver 回呼「當下那一刻」被賦值定住的整數快照，ResizeObserver
+          // 本身是非同步觸發，可能落後於 staticImage 當前實際顯示尺寸；
+          // 一旦兩者不同步，車牌框（用 drawingOverlay 基準）與箭頭（用 staticImage
+          // 基準）在編輯區預覽時就是用兩把不同的尺換算位置，恰巧視覺對齊只是巧合。
+          // 等到「產生最終截圖」時，車牌框改用與箭頭相同的 finalCanvas 基準重新計算，
+          // 相對位置就會跟着变動，導致編輯區看似對齊的箭頭尾端在最終輸出對不上車牌框。
+          const plateDisplayW = staticImage.clientWidth || drawingOverlay.width;
+          const plateDisplayH = staticImage.clientHeight || drawingOverlay.height;
+          drawPlateOnCanvas(ctx, plateDisplayW, plateDisplayH, true);
+        }
       }
 
       /* ===== Plate Paste ===== */
@@ -809,6 +848,7 @@ export function createSnapshotEditor() {
         startX = e.clientX - rect.left;
         startY = e.clientY - rect.top;
         currentShape = {
+          id: `shape_${Date.now()}_${Math.random().toString(36).slice(2,8)}`,
           type: drawingShapeSelect?.value || 'rectangle',
           thickness: Number(lineThicknessInput?.value || 5),
           startX, startY, endX: startX, endY: startY, angle: 0, width: 0, height: 0
@@ -824,7 +864,13 @@ export function createSnapshotEditor() {
         const dx = currentX - startX;
         const dy = currentY - startY;
 
-        if (rotationCheckbox?.checked) {
+        if (currentShape.type === 'arrow') {
+          // 箭頭：方向完全由 start→end 兩點決定，不套用旋轉座標系，
+          // width/height 僅作為 dragThreshold 判斷用途（絕對值距離）。
+          currentShape.width  = Math.abs(dx);
+          currentShape.height = Math.abs(dy);
+          currentShape.angle  = 0;
+        } else if (rotationCheckbox?.checked) {
           currentShape.width  = Math.sqrt(dx*dx + dy*dy);
           currentShape.height = currentShape.width * 0.5;
           currentShape.angle  = Math.atan2(dy, dx);
@@ -843,7 +889,10 @@ export function createSnapshotEditor() {
       function stopUserDrawing() {
         if (!isDrawing || !currentShape) return;
         isDrawing = false;
-        if (currentShape.width > dragThreshold && currentShape.height > dragThreshold) drawnShapes.push(currentShape);
+        const valid = currentShape.type === 'arrow'
+          ? Math.hypot(currentShape.endX - currentShape.startX, currentShape.endY - currentShape.startY) > dragThreshold
+          : (currentShape.width > dragThreshold && currentShape.height > dragThreshold);
+        if (valid) drawnShapes.push(currentShape);
         currentShape = null;
         drawOverlayContent();
       }
@@ -852,10 +901,93 @@ export function createSnapshotEditor() {
         drawnShapes = [];
         textItems = [];
         mosaicItems = [];
+        isShapeDragging = false;
+        dragShape = null;
+        shapeDragOrig = null;
+        drawOverlayContent();
+      }
+
+      /* ===== Shape Dragging（方框/圓框/箭頭：整體拖曳＋箭頭端點拖曳） =====
+       * 沿用 text 工具已驗證的「先命中測試 → 命中則拖曳，否則落入新建」分支模式：
+       * pointerdown 時先呼叫 hitDrawnShape()，命中就記錄拖曳狀態並在 pointerup 前攔截，
+       * 完全不進入 startUserDrawing()；沒命中才照舊呼叫 startUserDrawing() 開始畫新形狀。
+       */
+      function onShapePointerDown(e) {
+        const pt = toOverlayCoord(e);
+        const hit = hitDrawnShape(pt.x, pt.y);
+        if (!hit) {
+          dragShape = null; // 確保先前選取的把手清除
+          startUserDrawing(e);
+          return;
+        }
+        e.preventDefault(); e.stopPropagation();
+        isShapeDragging = true;
+        dragShape = hit.shape;
+        dragShapeMode = hit.mode; // 'body' | 'start' | 'end'
+        shapeDragStartX = pt.x; shapeDragStartY = pt.y;
+        shapeDragOrig = { startX: hit.shape.startX, startY: hit.shape.startY, endX: hit.shape.endX, endY: hit.shape.endY };
+        drawingOverlay.setPointerCapture?.(e.pointerId);
+        drawOverlayContent();
+      }
+
+      function onShapePointerMove(e) {
+        if (!isShapeDragging || !dragShape) {
+          const pt = toOverlayCoord(e);
+          const hit = hitDrawnShape(pt.x, pt.y);
+          drawingOverlay.style.cursor = hit ? (hit.mode === 'body' ? 'move' : 'pointer') : 'crosshair';
+          return;
+        }
+        e.preventDefault(); e.stopPropagation();
+        const pt = toOverlayCoord(e);
+        const dx = pt.x - shapeDragStartX;
+        const dy = pt.y - shapeDragStartY;
+
+        if (dragShapeMode === 'start') {
+          // 箭頭起點端點縮放（僅箭頭支援）
+          dragShape.startX = shapeDragOrig.startX + dx;
+          dragShape.startY = shapeDragOrig.startY + dy;
+        } else if (dragShapeMode === 'end') {
+          // 箭頭終點端點縮放（僅箭頭支援）
+          dragShape.endX = shapeDragOrig.endX + dx;
+          dragShape.endY = shapeDragOrig.endY + dy;
+        } else {
+          // 整體位移：矩形/圓形/箭頭通用，起訖點同步平移，angle/width/height 維持不變
+          dragShape.startX = shapeDragOrig.startX + dx;
+          dragShape.startY = shapeDragOrig.startY + dy;
+          dragShape.endX = shapeDragOrig.endX + dx;
+          dragShape.endY = shapeDragOrig.endY + dy;
+        }
+        drawOverlayContent();
+      }
+
+      function onShapePointerUp(e) {
+        if (!isShapeDragging) return;
+        drawingOverlay.releasePointerCapture?.(e.pointerId);
+        isShapeDragging = false;
+        shapeDragOrig = null;
         drawOverlayContent();
       }
 
       function drawShape(ctx, shape, scaleX, scaleY) {
+        if (shape.type === 'arrow') {
+          // 箭頭方向與三角形形狀「必須」完全在 overlay 原始座標系下計算完成
+          // （角度、三角形頂點、線身回縮中點皆是），最後才把每一個點分別乘上
+          // scaleX / scaleY 轉換到目標座標系（呼叫端 overlay 顯示或最終輸出解析度）。
+          // 這與矩形/圓形「先在局部座標系建好形狀、再套用縮放」的作法一致；
+          // 絕不可先用 scaleX/scaleY 縮放端點座標，才在被縮放後（可能非等比）的座標系
+          // 上用單一 angle/arrowLength 反推三角形頂點 —— 一旦 scaleX ≠ scaleY，
+          // 該座標系其實已經是非等比拉伸過的，此時算出的 angle 與三角形頂點會失真，
+          // 導致三角形整體扭曲、連帶線身可見終點（三角形底邊中點）跟著偏移，
+          // 造成頭尾兩端在編輯區與最終輸出之間都對不上。
+          drawArrowShape(
+            ctx,
+            shape.startX, shape.startY,
+            shape.endX,   shape.endY,
+            '#e53935', shape.thickness,
+            scaleX, scaleY
+          );
+          return;
+        }
         ctx.strokeStyle = '#e53935';
         ctx.lineWidth = shape.thickness * scaleX;
         ctx.save();
@@ -876,6 +1008,57 @@ export function createSnapshotEditor() {
         ctx.restore();
       }
 
+      // 箭頭繪製（移植自參考範例的等比例三角形箭頭演算法）：
+      // 依線段長度動態計算箭頭尖端大小，主線只畫到三角形底邊中點避免圓頭穿出。
+      //
+      // 重要：x1,y1,x2,y2 必須是「編輯區 overlay 原始座標系」下的端點座標（未縮放）。
+      // 角度（angle）、arrowLength 的 12~35px clamp、三角形頂點、線身回縮中點（mid）
+      // 全部都在這個原始座標系下計算完成，確保方向與比例永遠與編輯區顯示完全一致；
+      // 只有算好之後的「最終要畫的每一個點」才在最後一步分別乘上 scaleX / scaleY
+      // 轉換到呼叫端座標系（overlay 顯示時傳 1,1；輸出到最終解析度時傳實際縮放倍率）。
+      // 絕不可先用 scaleX/scaleY 縮放端點座標、才在縮放後座標系重新計算角度與三角形，
+      // 一旦 scaleX ≠ scaleY（非等比縮放），該座標系其實已經是被拉伸過的，
+      // 算出的角度與三角形頂點會失真，導致箭頭整體扭曲、頭尾兩端位置對不上編輯區。
+      function drawArrowShape(ctx, x1, y1, x2, y2, color, lineWidth, scaleX = 1, scaleY = 1) {
+        const lineLength = Math.hypot(x2 - x1, y2 - y1);
+        if (lineLength < 2) return;
+
+        ctx.save();
+        ctx.strokeStyle = color;
+        ctx.fillStyle = color;
+        ctx.lineCap = 'round';
+        ctx.lineWidth = Math.max(1, (lineWidth || 5) * scaleX);
+
+        // ---- 以下全部在 overlay 原始座標系（未縮放）計算 ----
+        const angle = Math.atan2(y2 - y1, x2 - x1);
+        let arrowLength = lineLength * 0.12;
+        if (arrowLength < 12) arrowLength = 12;
+        if (arrowLength > 35) arrowLength = 35;
+
+        const arrowWidthAngle = Math.PI / 6; // 30 度
+        const x3 = x2 - arrowLength * Math.cos(angle - arrowWidthAngle);
+        const y3 = y2 - arrowLength * Math.sin(angle - arrowWidthAngle);
+        const x4 = x2 - arrowLength * Math.cos(angle + arrowWidthAngle);
+        const y4 = y2 - arrowLength * Math.sin(angle + arrowWidthAngle);
+
+        const midX = (x3 + x4) / 2;
+        const midY = (y3 + y4) / 2;
+
+        // ---- 最後一步：每個點分別乘上 scaleX / scaleY 轉換到目標座標系 ----
+        ctx.beginPath();
+        ctx.moveTo(x1 * scaleX, y1 * scaleY);
+        ctx.lineTo(midX * scaleX, midY * scaleY);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(x2 * scaleX, y2 * scaleY);
+        ctx.lineTo(x3 * scaleX, y3 * scaleY);
+        ctx.lineTo(x4 * scaleX, y4 * scaleY);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+
       function drawAllUserShapes(ctx, finalW, finalH, isOverlay = false) {
         if (!drawnShapes.length) return;
         let scaleX = 1, scaleY = 1;
@@ -886,6 +1069,96 @@ export function createSnapshotEditor() {
           scaleY = finalH / displayH;
         }
         drawnShapes.forEach(s => drawShape(ctx, s, scaleX, scaleY));
+      }
+
+      /* ===== Shape Hit Testing（方框/圓框/箭頭：整體拖曳＋箭頭端點編輯共用命中測試） =====
+       * 統一規則：
+       *  1. 只認「框線／箭頭線身」附近（容忍值 shapeHitTolerance），不認內部面積 —— 符合空心框視覺、
+       *     並大幅降低「框包框」誤觸機率；點在框內部空白處視為未命中，會落入新建流程。
+       *  2. z-order：多個形狀同時落在容忍值內時，後畫的（陣列尾端）優先命中，與既有 hitTextItem 一致。
+       *  3. 旋轉（angle）處理：矩形/圓形命中測試前，先用該形狀「自己的」angle 做反旋轉座標轉換，
+       *     angle===0 時反旋轉退化為原始座標，等於自動相容未旋轉形狀，無需額外分支。
+       */
+      function distanceToSegment(px, py, x1, y1, x2, y2) {
+        const A = px - x1, B = py - y1, C = x2 - x1, D = y2 - y1;
+        const dot = A * C + B * D, lenSq = C * C + D * D;
+        const param = lenSq !== 0 ? dot / lenSq : -1;
+        const xx = param < 0 ? x1 : (param > 1 ? x2 : x1 + param * C);
+        const yy = param < 0 ? y1 : (param > 1 ? y2 : y1 + param * D);
+        return Math.hypot(px - xx, py - yy);
+      }
+
+      // 將滑鼠座標轉換到形狀自身（以中心為原點、反旋轉後）的局部座標系
+      function toShapeLocalCoord(shape, x, y) {
+        const cx = shape.startX + (shape.endX - shape.startX) / 2;
+        const cy = shape.startY + (shape.endY - shape.startY) / 2;
+        const dx = x - cx, dy = y - cy;
+        const cos = Math.cos(-shape.angle || 0), sin = Math.sin(-shape.angle || 0);
+        return { x: dx * cos - dy * sin, y: dx * sin + dy * cos };
+      }
+
+      function hitRectEdge(shape, x, y, tolerance) {
+        const { x: lx, y: ly } = toShapeLocalCoord(shape, x, y);
+        const hw = shape.width / 2, hh = shape.height / 2;
+        // 在包圍盒的容忍帶內，且落在「邊界附近」而非中心大片空白
+        const nearOuter = Math.abs(lx) <= hw + tolerance && Math.abs(ly) <= hh + tolerance;
+        if (!nearOuter) return false;
+        const nearVerticalEdge   = Math.abs(Math.abs(lx) - hw) <= tolerance && Math.abs(ly) <= hh + tolerance;
+        const nearHorizontalEdge = Math.abs(Math.abs(ly) - hh) <= tolerance && Math.abs(lx) <= hw + tolerance;
+        return nearVerticalEdge || nearHorizontalEdge;
+      }
+
+      function hitCircleEdge(shape, x, y, tolerance) {
+        const { x: lx, y: ly } = toShapeLocalCoord(shape, x, y);
+        const rx = shape.width / 2, ry = shape.height / 2;
+        if (rx <= 0 || ry <= 0) return false;
+        // 橢圓長短軸校正：把 ly 依 rx/ry 比例縮放回「正圓」座標系後，再用圓周距離判斷
+        const correctedY = ly * (rx / ry);
+        const dist = Math.hypot(lx, correctedY);
+        return Math.abs(dist - rx) <= tolerance;
+      }
+
+      function hitArrowLine(shape, x, y, tolerance) {
+        return distanceToSegment(x, y, shape.startX, shape.startY, shape.endX, shape.endY) <= tolerance;
+      }
+
+      // 箭頭專屬：先判斷是否命中端點把手（比線身優先），回傳 'start' | 'end' | null
+      function hitArrowEndpoint(shape, x, y, tolerance) {
+        if (Math.hypot(x - shape.startX, y - shape.startY) <= tolerance) return 'start';
+        if (Math.hypot(x - shape.endX,   y - shape.endY)   <= tolerance) return 'end';
+        return null;
+      }
+
+      // 統一命中測試入口：回傳 { shape, mode } 或 null。mode 為 'start'|'end'（僅箭頭端點）或 'body'（整體拖曳）。
+      function hitDrawnShape(x, y) {
+        for (let i = drawnShapes.length - 1; i >= 0; i--) {
+          const s = drawnShapes[i];
+          if (s.type === 'arrow') {
+            const ep = hitArrowEndpoint(s, x, y, shapeEndpointTolerance);
+            if (ep) return { shape: s, mode: ep };
+            if (hitArrowLine(s, x, y, shapeHitTolerance)) return { shape: s, mode: 'body' };
+          } else if (s.type === 'rectangle') {
+            if (hitRectEdge(s, x, y, shapeHitTolerance)) return { shape: s, mode: 'body' };
+          } else if (s.type === 'circle') {
+            if (hitCircleEdge(s, x, y, shapeHitTolerance)) return { shape: s, mode: 'body' };
+          }
+        }
+        return null;
+      }
+
+      function drawShapeSelectionHandles(ctx, shape) {
+        if (shape.type !== 'arrow') return; // 目前僅箭頭提供端點把手（矩形/圓形僅整體拖曳）
+        [[shape.startX, shape.startY], [shape.endX, shape.endY]].forEach(([hx, hy]) => {
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(hx, hy, 6, 0, Math.PI * 2);
+          ctx.fillStyle = '#ffffff';
+          ctx.fill();
+          ctx.strokeStyle = '#007bff';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          ctx.restore();
+        });
       }
 
       /* ===== Text Editing ===== */
@@ -1138,7 +1411,12 @@ export function createSnapshotEditor() {
 
       function drawMosaicOverlay(ctx) {
         if (!staticImage || staticImage.naturalWidth === 0) return;
-        const ow = drawingOverlay.width, oh = drawingOverlay.height;
+        // 與 drawPlateOnCanvas 同理：基準尺寸統一改用 staticImage.clientWidth/clientHeight
+        // （與 applyMosaicOnFinal 最終輸出時一致），避免 drawingOverlay.width/height
+        // 因 ResizeObserver 非同步更新而與實際顯示尺寸不同步，造成馬賽克編輯區預覽位置
+        // 與最終輸出對不齊。
+        const ow = staticImage.clientWidth || drawingOverlay.width;
+        const oh = staticImage.clientHeight || drawingOverlay.height;
         const scaleX = staticImage.naturalWidth / ow;
         const scaleY = staticImage.naturalHeight / oh;
         mosaicItems.forEach(mz => {
