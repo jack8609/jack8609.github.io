@@ -795,29 +795,25 @@ export function createSnapshotEditor() {
           });
           ctx.restore();
         }
-        if (plateImageInMemory) {
-          // 車牌特寫框的基準尺寸「必須」與箭頭/文字/馬賽克等其他圖層在編輯區使用的
-          // 基準完全一致（staticImage.clientWidth/clientHeight），不可改用
-          // drawingOverlay.width/height（canvas 繪圖表面尺寸屬性）。
-          // 原因：drawingOverlay.width/height 是在 setupDrawingOverlay()／
-          // ResizeObserver 回呼「當下那一刻」被賦值定住的整數快照，ResizeObserver
-          // 本身是非同步觸發，可能落後於 staticImage 當前實際顯示尺寸；
-          // 一旦兩者不同步，車牌框（用 drawingOverlay 基準）與箭頭（用 staticImage
-          // 基準）在編輯區預覽時就是用兩把不同的尺換算位置，恰巧視覺對齊只是巧合。
-          // 等到「產生最終截圖」時，車牌框改用與箭頭相同的 finalCanvas 基準重新計算，
-          // 相對位置就會跟着变動，導致編輯區看似對齊的箭頭尾端在最終輸出對不上車牌框。
-          const plateDisplayW = staticImage.clientWidth || drawingOverlay.width;
-          const plateDisplayH = staticImage.clientHeight || drawingOverlay.height;
-          drawPlateOnCanvas(ctx, plateDisplayW, plateDisplayH, true);
-        }
+        if (plateImageInMemory) drawPlateOnCanvas(ctx, drawingOverlay.width, drawingOverlay.height, true);
       }
 
       /* ===== Plate Paste ===== */
+      // margin 必須用「相對 targetW 的比例」而非固定像素：drawPlateOnCanvas 會被
+      // 兩種截然不同的畫布尺度呼叫——編輯區預覽用 drawingOverlay.width/height
+      // （例如 850×480），產生最終截圖時用 finalCanvas.width/height（即
+      // staticImage.naturalWidth/naturalHeight，例如 1920×1080，往往是編輯區的
+      // 2~3 倍以上）。車牌框的寬高用 targetW * scalePercent 換算，會正確等比例
+      // 縮放；但若 margin 是固定像素，同樣的留白在大圖裡佔比會縮小超過一倍，
+      // 導致車牌框在編輯區與最終輸出之間的「相對位置」不一致（框被不成比例地拉向
+      // 邊界），使貼齊車牌框畫的箭頭尾端輸出後對不上。改為 targetW * MARGIN_RATIO
+      // 後，留白占畫布寬度的比例在任何尺度下都固定，車牌框相對位置才會一致。
+      const MARGIN_RATIO = 0.02; // 依 16px 在編輯區典型顯示寬度(~850px)下的視覺比例反推
       function drawPlateOnCanvas(ctx, targetW, targetH, isOverlay = false) {
         if (!plateImageInMemory) return;
         const position = platePositionSelect.value || 'bottomRight';
         const scalePercent = (Number(plateScaleInput.value) || 30) / 100;
-        const margin = 16;
+        const margin = targetW * MARGIN_RATIO;
         const ow = plateImageInMemory.width, oh = plateImageInMemory.height;
         let w = targetW * scalePercent;
         let h = (w / ow) * oh;
@@ -1411,12 +1407,7 @@ export function createSnapshotEditor() {
 
       function drawMosaicOverlay(ctx) {
         if (!staticImage || staticImage.naturalWidth === 0) return;
-        // 與 drawPlateOnCanvas 同理：基準尺寸統一改用 staticImage.clientWidth/clientHeight
-        // （與 applyMosaicOnFinal 最終輸出時一致），避免 drawingOverlay.width/height
-        // 因 ResizeObserver 非同步更新而與實際顯示尺寸不同步，造成馬賽克編輯區預覽位置
-        // 與最終輸出對不齊。
-        const ow = staticImage.clientWidth || drawingOverlay.width;
-        const oh = staticImage.clientHeight || drawingOverlay.height;
+        const ow = drawingOverlay.width, oh = drawingOverlay.height;
         const scaleX = staticImage.naturalWidth / ow;
         const scaleY = staticImage.naturalHeight / oh;
         mosaicItems.forEach(mz => {
