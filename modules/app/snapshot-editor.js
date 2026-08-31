@@ -168,6 +168,10 @@ export function createSnapshotEditor() {
       const shapeHitTolerance = 8;        // 點擊框線/箭頭線身的容忍誤差(px)
       const shapeEndpointTolerance = 10;  // 點擊箭頭端點把手的容忍誤差(px)
 
+      // Resize 座標重新映射：記錄「上一次」overlay 顯示尺寸，作為下次 resize 換算縮放比例的基準。
+      // 0 代表尚未初始化，此時不做映射（避免用 0 當分母）。
+      let lastOverlayW = 0, lastOverlayH = 0;
+
       // Options UI elements
       let toolSelect = null;
       let textSize = null;
@@ -460,6 +464,66 @@ export function createSnapshotEditor() {
         updateToolOptionsVisibility();
       }
 
+      /* ===== Overlay Resize: 既有繪圖物件座標重新映射 =====
+       * resize（桌面拖視窗寬度、手機橫直屏切換）後，drawingOverlay 的顯示尺寸改變，
+       * 但 drawnShapes/mosaicItems/textItems 裡已建立的物件座標是「建立當下」的絕對像素快照，
+       * 不會自動跟著新尺寸縮放。此函式在每次偵測到尺寸變化時，把三種物件的座標與尺寸類欄位
+       * 都乘上新舊尺寸的比例，讓物件視覺位置與大小跟著畫布正確等比例縮放。
+       *
+       * 進行中、尚未確定的操作（currentShape/mosaicCurrent 尚未 push，或 isShapeDragging
+       * 中的拖曳手勢）一律視為作廢：新畫的物件直接丟棄不儲存；正在拖曳既有物件時，只中斷
+       * 拖曳手勢本身（不特殊處理物件座標），物件當下座標留在陣列中，隨其他物件一併正常映射。
+       */
+      function remapDrawingsOnResize(newW, newH) {
+        // 中斷所有進行中的操作，不論等一下是否真的需要映射（尺寸不變時也不該讓過期手勢殘留）。
+        isDrawing = false;
+        currentShape = null;
+        isMosaicDrawing = false;
+        mosaicCurrent = null;
+        isShapeDragging = false;
+        dragShape = null;
+        dragShapeMode = 'body';
+        shapeDragOrig = null;
+
+        const hasValidPrevSize = lastOverlayW > 0 && lastOverlayH > 0;
+        const sizeChanged = newW !== lastOverlayW || newH !== lastOverlayH;
+
+        if (hasValidPrevSize && sizeChanged && newW > 0 && newH > 0) {
+          const scaleX = newW / lastOverlayW;
+          const scaleY = newH / lastOverlayH;
+          const scaleAvg = (scaleX + scaleY) / 2;
+
+          drawnShapes.forEach((shape) => {
+            shape.startX *= scaleX;
+            shape.endX *= scaleX;
+            shape.startY *= scaleY;
+            shape.endY *= scaleY;
+            shape.width *= scaleX;
+            shape.height *= scaleY;
+            shape.thickness = Math.max(1, shape.thickness * scaleAvg);
+          });
+
+          mosaicItems.forEach((mz) => {
+            mz.rect.x *= scaleX;
+            mz.rect.w *= scaleX;
+            mz.rect.y *= scaleY;
+            mz.rect.h *= scaleY;
+            mz.block = Math.max(1, mz.block * scaleAvg); // block 是除數（drawMosaicOverlay 內 sw/block），需保底避免縮到 0
+          });
+
+          textItems.forEach((t) => {
+            t.x *= scaleX;
+            t.y *= scaleY;
+            if (t.font) {
+              t.font = t.font.replace(/(\d+)px/i, (_, px) => `${Math.max(1, Math.round(Number(px) * scaleAvg))}px`);
+            }
+          });
+        }
+
+        lastOverlayW = newW;
+        lastOverlayH = newH;
+      }
+
       /* ===== Overlay: Size + Events ===== */
       function setupDrawingOverlay() {
         if (staticImage.style.display === 'none') return;
@@ -473,6 +537,10 @@ export function createSnapshotEditor() {
         drawingOverlay.style.touchAction = 'none';
         drawingOverlay.style.display = 'block';
         drawingOverlay.style.pointerEvents = overlayInteractive ? 'auto' : 'none';
+        // 這裡是「初始化當前尺寸」而非 resize：只重設映射基準，不觸發座標映射
+        // （呼叫端若接著清空繪圖陣列如 loadSnapshot，本來就不需要映射舊資料）。
+        lastOverlayW = r.width;
+        lastOverlayH = r.height;
 
         if (!overlayEventsBound) {
           drawingOverlay.addEventListener('pointerdown', (e) => {
@@ -521,6 +589,7 @@ export function createSnapshotEditor() {
             drawingOverlay.height = rr.height;
             drawingOverlay.style.left = `${rr.left - bb.left}px`;
             drawingOverlay.style.top  = `${rr.top  - bb.top}px`;
+            remapDrawingsOnResize(rr.width, rr.height);
             drawOverlayContent();
           });
           ro.observe(staticImageContainer);
