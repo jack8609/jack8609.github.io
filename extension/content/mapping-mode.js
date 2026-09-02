@@ -15,7 +15,7 @@
   ]);
   const {
     LOGICAL_FIELDS, createEmptyProfile, upsertField, removeField, LOCATION_ROLES, LOCATION_ROLE_LABELS,
-    EVIDENCE_ROLE_LABELS, FIELD_LABELS, partitionEvidenceSelector
+    EVIDENCE_ROLE_LABELS, FIELD_LABELS, partitionEvidenceSelector, VIOLATION_ROLE_LABELS, partitionViolationCandidateGroup
   } = schemaMod;
   const { createProfileStore } = storageMod;
   const { siteIdFromHostname, originPatternFromUrl } = siteMod;
@@ -103,6 +103,10 @@
         }
       } else if (fieldName === 'evidenceImages' && item.role === 'confirm-upload') {
         container.appendChild(document.createTextNode(`${item.kind}:${text} [${EVIDENCE_ROLE_LABELS[item.role]}]`));
+      } else if (fieldName === 'violation' && item.role === 'candidate-controller') {
+        container.appendChild(document.createTextNode(`${item.kind}:${text} [${VIOLATION_ROLE_LABELS[item.role]}]`));
+      } else if (fieldName === 'violation' && item.role === 'candidate') {
+        container.appendChild(document.createTextNode(`${item.kind}:${text} [${VIOLATION_ROLE_LABELS[item.role]}→${item.controllerValue}]`));
       } else {
         container.appendChild(document.createTextNode(`${item.kind}:${text}`));
       }
@@ -117,28 +121,6 @@
     title.textContent = `⠿ 違規檢舉小幫手 — 對應模式（${profile.displayName}）`;
     title.title = '拖曳可移動面板位置';
     panel.appendChild(title);
-
-    // 「測試填入假資料」/「完成」跟標題一樣固定在頂部，不隨清單捲動，避免每次都要先捲到最下面才按得到。
-    const actions = document.createElement('div');
-    actions.className = 'vh-mapping-actions';
-    const testFillBtn = document.createElement('button');
-    testFillBtn.type = 'button';
-    testFillBtn.textContent = '測試填入假資料';
-    testFillBtn.title = '用目前已綁定的 selector 嘗試在頁面上填入假資料，驗證是否真的能定位到欄位（純前端模擬，不會送出表單）';
-    testFillBtn.addEventListener('click', runTestFill);
-    actions.appendChild(testFillBtn);
-    const doneBtn = document.createElement('button');
-    doneBtn.type = 'button';
-    doneBtn.textContent = '完成';
-    doneBtn.addEventListener('click', teardown);
-    actions.appendChild(doneBtn);
-    panel.appendChild(actions);
-
-    // 標題列固定不動，下面才是可捲動區塊（見 mapping-mode.css 的 flex 版面），避免面板拉高、
-    // 捲到下方對應欄位時標題（拖曳把手）被遮住還要先捲回頂端才能移動視窗。
-    const body = document.createElement('div');
-    body.className = 'vh-mapping-body';
-    panel.appendChild(body);
 
     // 「測試填入假資料」/「完成」跟標題一樣固定在頂部，不隨清單捲動，避免每次都要先捲到最下面才按得到。
     const actions = document.createElement('div');
@@ -188,6 +170,15 @@
       const bindBtn = document.createElement('button');
       bindBtn.type = 'button';
       bindBtn.textContent = field ? '重新綁定' : '綁定';
+      // 票券 03：violation 欄位一旦綁了候選群組（控制型 select + 候選 select），這顆一般「重新
+      // 綁定」按鈕（append=false）會用單一新元素整個覆蓋掉 selector 陣列，把候選群組全部沖掉——
+      // 想換掉候選群組要先按「清除」重來，不能用這顆按鈕。
+      const hasViolationCandidateGroup = fieldName === 'violation' && field &&
+        field.selector.some((item) => item.role === 'candidate-controller' || item.role === 'candidate');
+      bindBtn.disabled = hasViolationCandidateGroup;
+      bindBtn.title = hasViolationCandidateGroup
+        ? '這個欄位已綁定候選群組，請用下面的專屬按鈕調整，或先「清除」再重新綁定'
+        : '';
       bindBtn.addEventListener('click', () => startPicking(fieldName, false));
       li.appendChild(bindBtn);
 
@@ -198,11 +189,12 @@
       // evidenceImages 的 file-trigger 固定只允許 1 個 item（PLAN_B.md），沒有「多綁一個」的
       // 情境；file-slots（票券 01：固定多槽位附件）則相反，需要依序多次點選才能綁滿 N 個槽位，
       // 只在這個 kind 底下才開放「+ 新增元素」。已經綁了確認上傳鈕（票券 02）時也要停用：
-      // 確認上傳鈕只能搭配剛好 1 個主要 item，再新增下去會被 schema.js 擋下存檔。
+      // 確認上傳鈕只能搭配剛好 1 個主要 item，再新增下去會被 schema.js 擋下存檔。violation 欄位
+      // 綁了候選群組時也要停用，理由同上面 bindBtn。
       const isFileTriggerField = fieldName === 'evidenceImages' && field && field.selector[0].kind === 'file-trigger';
       const hasConfirmUploadBound = fieldName === 'evidenceImages' && field &&
         field.selector.some((item) => item.role === 'confirm-upload');
-      addBtn.disabled = !field || isFileTriggerField || hasConfirmUploadBound;
+      addBtn.disabled = !field || isFileTriggerField || hasConfirmUploadBound || hasViolationCandidateGroup;
       addBtn.addEventListener('click', () => startPicking(fieldName, true));
       li.appendChild(addBtn);
 
@@ -224,6 +216,32 @@
         }
       }
 
+      // 候選元素群組（票券 03：桃園違規事項 chose_type→chosen1/chosen2）是 violation 欄位專屬、
+      // 選填的另一種綁定方式，跟一般「綁定」/「+ 新增元素」（單一固定 select）分開，這樣台北/
+      // 新北市既有的單一 select 綁定方式不受影響。控制型 select 要先綁，才開放「+ 新增候選
+      // select」——不然候選 select 沒有控制值可以問（promptCandidateControllerValue 會讀取控制型
+      // select 目前的選項清單），也會存出「有候選卻沒有控制型」的無效狀態。
+      if (fieldName === 'violation') {
+        const controllerBoundItem = field &&
+          field.selector.find((item) => item.role === 'candidate-controller');
+        const controllerBtn = document.createElement('button');
+        controllerBtn.type = 'button';
+        controllerBtn.textContent = controllerBoundItem ? '重新綁定候選群組控制型 select' : '+ 綁定候選群組控制型 select（選填）';
+        controllerBtn.title = '部分網站（例如桃園）用一個控制型 select 切換顯示不同的候選違規清單，這裡綁定那顆控制型 select';
+        controllerBtn.addEventListener('click', () => startPicking(fieldName, false, 'candidate-controller'));
+        li.appendChild(controllerBtn);
+
+        const candidateBtn = document.createElement('button');
+        candidateBtn.type = 'button';
+        candidateBtn.textContent = '+ 新增候選 select（選填）';
+        candidateBtn.title = controllerBoundItem
+          ? '依序綁定每個候選違規清單 select，並指定切到控制型 select 的哪個選項時才會用到這份清單'
+          : '請先綁定候選群組控制型 select，才能新增候選 select';
+        candidateBtn.disabled = !controllerBoundItem;
+        candidateBtn.addEventListener('click', () => startPicking(fieldName, true, 'candidate'));
+        li.appendChild(candidateBtn);
+      }
+
       if (field) {
         const clearBtn = document.createElement('button');
         clearBtn.type = 'button';
@@ -235,7 +253,6 @@
       list.appendChild(li);
     }
     body.appendChild(list);
-    body.appendChild(list);
 
     if (pickingField) {
       const hint = document.createElement('div');
@@ -243,7 +260,11 @@
       const targetLabel = FIELD_LABELS[pickingField.fieldName] || pickingField.fieldName;
       hint.textContent = pickingField.role === 'confirm-upload'
         ? `請在頁面上點選「${targetLabel}」的確認上傳按鈕（按 Esc 取消）`
-        : `請在頁面上點選「${targetLabel}」對應的欄位（按 Esc 取消）`;
+        : pickingField.role === 'candidate-controller'
+          ? `請在頁面上點選「${targetLabel}」的候選群組控制型 select（按 Esc 取消）`
+          : pickingField.role === 'candidate'
+            ? `請在頁面上點選「${targetLabel}」的其中一個候選 select（按 Esc 取消）`
+            : `請在頁面上點選「${targetLabel}」對應的欄位（按 Esc 取消）`;
       body.appendChild(hint);
     }
   }
@@ -388,6 +409,21 @@
     return `${primarySummary}｜${EVIDENCE_ROLE_LABELS['confirm-upload']}：${confirmFound ? '已解析' : '⚠️ 找不到'}`;
   }
 
+  // 候選元素群組（票券 03：桃園違規事項 chose_type→chosen1/chosen2）獨立驗證——不套用下面
+  // summarizeTestFill 的一般 fillElementWithDummy（那套邏輯不知道候選群組的切換/清空規則，硬填
+  // 只會讓畫面出現看起來對、實際上沒清空另一組候選值的假象），只驗證控制型/候選 select 都解析
+  // 得到，不模擬填值。
+  function summarizeViolationCandidateGroupTestFill(items) {
+    const { controllerItem, candidateItems } = partitionViolationCandidateGroup(items);
+    const controllerFound = !!(controllerItem && resolveSelectorItem(controllerItem.value));
+    const foundCount = candidateItems.filter((item) => !!resolveSelectorItem(item.value)).length;
+    const controllerText = controllerFound ? '控制型 select 已解析' : '⚠️ 找不到控制型 select';
+    const candidateText = foundCount === candidateItems.length
+      ? `候選 select 全部找到（${foundCount}/${candidateItems.length}）`
+      : `⚠️ 候選 select 只找到 ${foundCount}/${candidateItems.length} 個`;
+    return `${controllerText}；${candidateText}`;
+  }
+
   // 每個 selector item 各自的 kind 決定要不要模擬填值——同一個邏輯欄位常常混合 custom 跟
   // plain 的真實元素（例如台北市「違規地點」：行政區的觸發元件是 custom，路名/公里/巷/弄
   // 卻是可以直接賦值的 plain），不能再假設整個欄位只有一種 kind（見 handlePick 旁的註解，
@@ -397,6 +433,9 @@
   // 填值成功），避免對這兩個欄位顯示假的「已填入測試值」（見 spec.md「測試填入假資料一致性」）。
   function summarizeTestFill(fieldName, items) {
     if (fieldName === 'evidenceImages') return summarizeEvidenceImagesTestFill(items);
+    if (fieldName === 'violation' && items.some((item) => item.role === 'candidate-controller')) {
+      return summarizeViolationCandidateGroupTestFill(items);
+    }
     const fillable = [];
     const nonFillable = [];
     items.forEach((item, idx) => {
@@ -496,6 +535,66 @@
       overlay.appendChild(modal);
       document.documentElement.appendChild(overlay);
     });
+  }
+
+  // 單一文字輸入的簡易 prompt（票券 03：候選 select 沒辦法從已綁定的控制型 select 讀到選項清單時
+  // 的手動輸入 fallback），跟 showValueMapModal 同樣的骨架但只有 1 個欄位，不需要另外抽共用元件。
+  function showTextPromptModal(headingText) {
+    return new Promise((resolve) => {
+      const overlay = document.createElement('div');
+      overlay.id = 'vh-mapping-modal-overlay';
+      const modal = document.createElement('div');
+      modal.id = 'vh-mapping-modal';
+
+      const heading = document.createElement('div');
+      heading.className = 'vh-mapping-modal-title';
+      heading.style.whiteSpace = 'pre-line';
+      heading.textContent = headingText;
+      modal.appendChild(heading);
+
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.placeholder = '控制型 select 的選項文字';
+      modal.appendChild(input);
+
+      const actions = document.createElement('div');
+      actions.className = 'vh-mapping-modal-actions';
+      const saveBtn = document.createElement('button');
+      saveBtn.type = 'button';
+      saveBtn.textContent = '儲存';
+      saveBtn.addEventListener('click', () => {
+        const value = input.value.trim();
+        overlay.remove();
+        resolve(value || undefined);
+      });
+      actions.appendChild(saveBtn);
+      modal.appendChild(actions);
+
+      overlay.appendChild(modal);
+      document.documentElement.appendChild(overlay);
+      input.focus();
+    });
+  }
+
+  // 候選 select 綁定時要記下「控制型 select 切到哪個選項文字，這份候選清單才會生效」
+  // （controllerValue，見 lib/schema.js 的候選元素群組驗證）。優先讀取已綁定的控制型 select
+  // 目前真實存在的選項清單，讓使用者用點選的（跟 showValueMapModal 讀真實選項的精神一致，避免
+  // 手動輸入打錯字跟真實選項文字對不起來）；控制型 select 解析不到時才退回自由輸入文字。
+  function promptCandidateControllerValue(existingSelector) {
+    const controllerItem = existingSelector && existingSelector.find((item) => item.role === 'candidate-controller');
+    const controllerEl = controllerItem && resolveSelectorItem(controllerItem.value);
+    if (controllerEl && controllerEl.tagName === 'SELECT' && controllerEl.options && controllerEl.options.length) {
+      const optionTexts = Array.from(controllerEl.options).map((o) => o.textContent.trim()).filter(Boolean);
+      if (optionTexts.length) {
+        return showButtonListModal(
+          '這個候選 select 對應控制型 select 的哪一個選項？（切到該選項時，這個候選 select 才會顯示/生效）',
+          optionTexts.map((text) => ({ value: text, label: text }))
+        );
+      }
+    }
+    return showTextPromptModal(
+      '找不到控制型 select 目前的選項清單，請直接輸入切到這個候選 select 時，控制型 select 的選項文字（例如「動態違規」）。'
+    );
   }
 
   // location 欄位的子元素語意不同（行政區/路名/其餘地址片段），來源網站只有一個完整地址字串，
@@ -630,6 +729,10 @@
     // 確認上傳按鈕（票券 02）是對 evidenceImages 額外、分開綁定的選填 item，不是主要的
     // 檔案輸入 item。
     const isConfirmUploadPick = isEvidenceField && pickingField.role === 'confirm-upload';
+    // 候選元素群組（票券 03）是對 violation 額外、分開綁定的選填 item：控制型 select 跟每個
+    // 候選 select 各自對應一種 pickingField.role。
+    const isCandidateControllerPick = pickingField.fieldName === 'violation' && pickingField.role === 'candidate-controller';
+    const isCandidatePick = pickingField.fieldName === 'violation' && pickingField.role === 'candidate';
     const el = isEvidenceField ? rawEl : normalizePickTarget(rawEl);
     const context = { nearbySelectedValues: collectNearbySelectedValues(el) };
     // <input type=button/submit> 沒有可用的文字內容/id/name 時（新北市「新增檔案」按鈕正是這種
@@ -678,9 +781,14 @@
     }
 
     const { fieldName, append } = pickingField;
+    const existing = profile.fields[fieldName];
 
     let valueMap;
-    if (!isEvidenceField && kind === 'select' && el.tagName === 'SELECT') {
+    // 候選群組控制型 select（票券 03）不需要 valueMap——它不會拿來跟來源違規文字比對，只是用來
+    // 切換候選 select 的可見性，問這個提示對使用者沒有意義。候選 select 本身仍會跟一般 select
+    // 欄位一樣詢問（見下面 resolveCandidateGroupMatch 的比對邏輯，跟 resolveOptionMatch 共用
+    // valueMap 橋接機制）。
+    if (!isEvidenceField && kind === 'select' && el.tagName === 'SELECT' && !isCandidateControllerPick) {
       const options = Array.from(el.options || []).map((o) => o.textContent.trim()).filter(Boolean);
       if (options.length) valueMap = await showValueMapModal(options);
     }
@@ -694,22 +802,40 @@
     }
 
     // location 欄位才需要角色標記，理由見 showLocationRoleModal() 上方註解；確認上傳按鈕
-    // （票券 02）的 role 則是依 pickingField.role 直接指定，不需要再問使用者。
+    // （票券 02）與候選群組控制型/候選 select（票券 03）的 role 則是依 pickingField.role
+    // 直接指定，不需要再問使用者。
     let role;
     if (!isEvidenceField && fieldName === 'location') {
       role = await showLocationRoleModal();
     } else if (isConfirmUploadPick) {
       role = 'confirm-upload';
+    } else if (isCandidateControllerPick) {
+      role = 'candidate-controller';
+    } else if (isCandidatePick) {
+      role = 'candidate';
     }
 
-    const existing = profile.fields[fieldName];
+    // 候選 select 綁定時額外詢問「控制型 select 切到哪個選項文字，這份候選清單才會生效」
+    // （見 lib/schema.js 的候選元素群組驗證）；使用者沒有輸入就放棄這次綁定，不存半殘的候選
+    // item（沒有 controllerValue 的候選 item 存進去也會被 schema.js 的 validateProfile 擋下）。
+    let controllerValue;
+    if (isCandidatePick) {
+      controllerValue = await promptCandidateControllerValue(existing && existing.selector);
+      if (!controllerValue) {
+        await showAlertModal('沒有輸入控制型 select 對應的選項文字，這個候選 select 不會被綁定，請重新點選一次。');
+        stopPicking();
+        return;
+      }
+    }
+
     const pickedValue = ['id', 'name', 'attributeFingerprint'].includes(descriptor.type) ? descriptor.value : descriptor;
     const newItem = {
       kind,
       value: pickedValue,
       ...(valueMap ? { valueMap } : {}),
       ...(transform ? { transform } : {}),
-      ...(role ? { role } : {})
+      ...(role ? { role } : {}),
+      ...(controllerValue ? { controllerValue } : {})
     };
     // 確認上傳按鈕（票券 02）跟主要的檔案輸入 item 分開維護：重新綁定/新增主要 item 時不能把
     // 現有確認按鈕一起覆蓋掉，反之亦然；確認按鈕固定放在 selector 陣列最後，讓
@@ -720,6 +846,16 @@
     let selector;
     if (isConfirmUploadPick) {
       selector = [...existingPrimaryItems, newItem];
+    } else if (isCandidateControllerPick) {
+      // 重新綁定候選群組控制型 select：保留既有的候選 select item，只替換控制型 item 本身
+      // （控制型 select 固定只能有 1 個，跟 evidenceImages 的 confirm-upload 是同樣道理）。
+      const existingCandidateItems = existing ? existing.selector.filter((item) => item && item.role === 'candidate') : [];
+      selector = [newItem, ...existingCandidateItems];
+    } else if (isCandidatePick) {
+      // 新增候選 select：保留既有控制型 item 與其他候選 item，新的候選 item 附加在最後。
+      const existingControllerItem = existing ? existing.selector.find((item) => item && item.role === 'candidate-controller') : null;
+      const existingCandidateItems = existing ? existing.selector.filter((item) => item && item.role === 'candidate') : [];
+      selector = [...(existingControllerItem ? [existingControllerItem] : []), ...existingCandidateItems, newItem];
     } else {
       // evidenceImages 的 file-trigger 固定只允許 1 個 item（PLAN_B.md），不支援 append；
       // file-slots（票券 01）則相反，依序點選多個固定 input 時要逐一累加進 selector 陣列——

@@ -40,6 +40,23 @@ export function partitionEvidenceSelector(selector) {
   return { confirmItem, primaryItems };
 }
 
+// 票券 03 新增：violation 的 selector item 可選標記 role，供桃園這類「一個控制型 select
+// （chose_type）切換顯示兩個互斥候選 select（chosen1/chosen2），該用哪一個取決於來源違規文字」
+// 的網站使用。跟 LOCATION_ROLES/EVIDENCE_ROLES 一樣是各自獨立的列舉，只在 violation 欄位下合法
+// （見 validateProfile 的 role 檢查）。candidate item 另外要帶 controllerValue（切到控制型
+// select 的哪個選項文字時，這份候選清單才會生效/顯示）。
+export const VIOLATION_ROLES = ['candidate-controller', 'candidate'];
+export const VIOLATION_ROLE_LABELS = { 'candidate-controller': '候選群組控制', candidate: '候選項目' };
+
+// 跟 partitionEvidenceSelector 同樣的道理：候選群組控制型 select（最多 1 個）跟候選 select
+// （可能多個）是分開維護的兩種角色，validateProfile、fill-mode.js 的候選群組填表流程、
+// mapping-mode.js 面板顯示/綁定流程三處共用，避免各自維護一份一樣的 filter/find。
+export function partitionViolationCandidateGroup(selector) {
+  const controllerItem = selector.find((item) => item && item.role === 'candidate-controller') || null;
+  const candidateItems = selector.filter((item) => item && item.role === 'candidate');
+  return { controllerItem, candidateItems };
+}
+
 // select/custom 一律是風險欄位（PLAN.md）。kind 掛在每個 selector item 上而不是欄位層級，
 // 因為同一個邏輯欄位常常混合不同 kind 的真實 DOM 元素（例如台北市「違規地點」裡，行政區的
 // 觸發元件是 custom，但路名／公里／巷／弄卻是可以直接賦值的 plain）——欄位層級只存一個 kind
@@ -125,9 +142,12 @@ export function validateProfile(profile) {
           errors.push(`欄位 ${name} 第 ${idx} 個 selector item 缺少 value`);
         }
         // role 的合法值依欄位而異：location 用 LOCATION_ROLES，evidenceImages 用 EVIDENCE_ROLES
-        // （票券 02 的確認上傳按鈕），其餘欄位一律不接受 role。
+        // （票券 02 的確認上傳按鈕），violation 用 VIOLATION_ROLES（票券 03 的候選元素群組），
+        // 其餘欄位一律不接受 role。
         if (item && item.role !== undefined) {
-          const validRoles = name === 'location' ? LOCATION_ROLES : (name === 'evidenceImages' ? EVIDENCE_ROLES : []);
+          const validRoles = name === 'location'
+            ? LOCATION_ROLES
+            : (name === 'evidenceImages' ? EVIDENCE_ROLES : (name === 'violation' ? VIOLATION_ROLES : []));
           if (!validRoles.includes(item.role)) {
             errors.push(`欄位 ${name} 第 ${idx} 個 selector item 的 role 不合法`);
           }
@@ -158,6 +178,32 @@ export function validateProfile(profile) {
       }
       // file-slots（臺南/桃園：頁面載入時就固定存在 N 個獨立原生 input[type=file]）反過來
       // 允許多個 item，每個 item 各自直接綁定一個固定 input，不像 file-trigger 需要祖先鏈反推。
+
+      // 候選元素群組（票券 03：桃園違規事項 chose_type→chosen1/chosen2）：candidate role 只能
+      // 用在 violation 欄位（上面 role 合法性檢查已擋下其他欄位），這裡驗證群組結構本身——控制型
+      // select 最多 1 個；只要有候選 select 存在，控制型 select 就必須剛好 1 個。刻意*不*要求
+      // 「控制型存在就一定要有候選」，讓對應模式可以先綁控制型、再逐一新增候選 select 的中間狀態
+      // 也能存檔（見 mapping-mode.js 的綁定流程，跟 evidenceImages 確認上傳鈕「先綁主要 item 才能
+      // 綁確認鈕」是類似的漸進式綁定考量）。每個候選 select 都要有 controllerValue（控制型
+      // select 切到哪個選項文字時，這份候選清單才會生效），且彼此不可重複，否則引擎無法判斷
+      // 該清空/賦值哪一個。
+      const controllerItems = field.selector.filter((item) => item && item.role === 'candidate-controller');
+      const { candidateItems } = partitionViolationCandidateGroup(field.selector);
+      if (controllerItems.length > 1) {
+        errors.push(`欄位 ${name} 的候選群組控制型 select 最多只能綁定 1 個 item`);
+      }
+      if (candidateItems.length > 0 && controllerItems.length !== 1) {
+        errors.push(`欄位 ${name} 有候選 select 時必須剛好綁定 1 個候選群組控制型 select`);
+      }
+      candidateItems.forEach((item, idx) => {
+        if (!item.controllerValue) {
+          errors.push(`欄位 ${name} 第 ${idx} 個候選 select 缺少 controllerValue`);
+        }
+      });
+      const controllerValues = candidateItems.map((item) => item.controllerValue).filter(Boolean);
+      if (new Set(controllerValues).size !== controllerValues.length) {
+        errors.push(`欄位 ${name} 的候選 select controllerValue 不可重複`);
+      }
     }
   }
   if (Array.isArray(profile.fieldOrder) && profile.fields) {

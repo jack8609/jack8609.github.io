@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-const { resolveOptionMatch, applyDateTransform, buildFillPlan } = await import('../lib/fill-engine.js');
+const { resolveOptionMatch, applyDateTransform, buildFillPlan, resolveCandidateGroupMatch } = await import('../lib/fill-engine.js');
 
 // resolveOptionMatch：valueMap 優先 > 選項文字完全比對 > （fuzzyAllowed 才）模糊比對
 {
@@ -60,6 +60,33 @@ const { resolveOptionMatch, applyDateTransform, buildFillPlan } = await import('
   // 沒有「段」可轉換、且完全比對不到：維持 not-found，不會被路段邏輯誤觸發
   assert.deepEqual(
     resolveOptionMatch(['選項A', '選項B'], '選項C', {}),
+    { matched: false, reason: 'not-found' }
+  );
+}
+
+// resolveCandidateGroupMatch（票券 03：桃園違規事項候選元素群組 chose_type→chosen1/chosen2）：
+// 依序跟每個候選群組的選項清單比對，第一個命中的群組就是答案；都沒命中則回傳 matched:false。
+{
+  const groups = [
+    { controllerValue: '動態違規', optionTexts: ['闖紅燈-紅燈右轉', '未依規定兩段式左轉'] },
+    { controllerValue: '靜態違規', optionTexts: ['違規停車-佔用身心障礙專用停車位', '併排停車'] }
+  ];
+
+  // 命中候選 1（動態違規清單）
+  assert.deepEqual(
+    resolveCandidateGroupMatch('未依規定兩段式左轉', groups),
+    { matched: true, controllerValue: '動態違規', optionIndex: 1, reason: 'exact' }
+  );
+
+  // 命中候選 2（靜態違規清單）——即使命中的候選群組排在陣列後面，也要找到正確答案，不是永遠回傳第一個
+  assert.deepEqual(
+    resolveCandidateGroupMatch('併排停車', groups),
+    { matched: true, controllerValue: '靜態違規', optionIndex: 1, reason: 'exact' }
+  );
+
+  // 兩邊都沒命中：回傳 matched:false，呼叫端一律標記待確認，不猜測選哪個候選群組
+  assert.deepEqual(
+    resolveCandidateGroupMatch('完全不存在的違規事實', groups),
     { matched: false, reason: 'not-found' }
   );
 }
@@ -221,6 +248,29 @@ const { resolveOptionMatch, applyDateTransform, buildFillPlan } = await import('
   assert.equal(singleTimeMissingMinute[0].items[0].skipReason, 'no-source-value');
   const singleTimeMissingHour = buildFillPlan({ ...sourceData, hour: '' }, singleTimeProfile);
   assert.equal(singleTimeMissingHour[0].items[0].skipReason, 'no-source-value');
+
+  // violation 欄位的候選群組控制型 select（role: 'candidate-controller'）與候選 select
+  // （role: 'candidate'，票券 03）一律 skip（'candidate-group-pending'）——這兩種 item 走
+  // content/fill-mode.js 的專用候選群組流程，不套用這裡的一般 select 賦值邏輯，也不能落到
+  // 'no-source-value'（否則會誤以為只是單純沒有來源資料）。
+  const candidateGroupProfile = {
+    fieldOrder: ['violation'],
+    fields: {
+      violation: {
+        riskField: true,
+        selector: [
+          { kind: 'select', value: '#chose_type', role: 'candidate-controller' },
+          { kind: 'select', value: '#chosen1', role: 'candidate', controllerValue: '動態違規' },
+          { kind: 'select', value: '#chosen2', role: 'candidate', controllerValue: '靜態違規' }
+        ]
+      }
+    }
+  };
+  const candidateGroupPlan = buildFillPlan(sourceData, candidateGroupProfile);
+  assert.deepEqual(
+    candidateGroupPlan[0].items.map((i) => i.skipReason),
+    ['candidate-group-pending', 'candidate-group-pending', 'candidate-group-pending']
+  );
 }
 
 console.log('extension-fill-engine-contract.test.mjs OK');

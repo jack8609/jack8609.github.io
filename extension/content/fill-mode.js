@@ -24,10 +24,10 @@
     import(chrome.runtime.getURL('lib/address-parser.js')),
     import(chrome.runtime.getURL('content/evidence-upload.js'))
   ]);
-  const { FIELD_LABELS, partitionEvidenceSelector } = schemaMod;
+  const { FIELD_LABELS, partitionEvidenceSelector, partitionViolationCandidateGroup } = schemaMod;
   const { createProfileStore } = storageMod;
   const { siteIdFromHostname } = siteMod;
-  const { buildFillPlan, resolveOptionMatch } = fillEngineMod;
+  const { buildFillPlan, resolveOptionMatch, resolveCandidateGroupMatch, normalizeForMatch } = fillEngineMod;
   const { resolveSelectorItem, setNativeValue, hasVuetifyDropdownWrapper, resolveFileTriggerInput } = resolveMod;
   const { fillVuetifyDropdown } = vuetifyMod;
   const { extractRoadNamePrefix } = addressParserMod;
@@ -304,6 +304,72 @@
     }
   }
 
+  // 票券 03（桃園違規事項候選元素群組）：violation 欄位若綁定了控制型 select
+  // （role: 'candidate-controller'）＋候選 select（role: 'candidate'），走專用流程，不套用上面
+  // applyItem 的一般 select 賦值邏輯——candidate1/candidate2 是否命中取決於來源違規文字本身，
+  // 且賦值前要先切控制型 select、等可見性切換、再清空非目標候選的值（避免共用 name 造成送出時
+  // 的重複值歧義，見 .scratch/six-cities-mapping/issues/03-taoyuan-violation-candidate-group.md）。
+  async function applyViolationCandidateGroup(selector, fieldLabel, sourceValue, fuzzyAllowed) {
+    const { controllerItem, candidateItems } = partitionViolationCandidateGroup(selector);
+
+    const controllerEl = await resolveOrMarkNeedsReview(
+      controllerItem.value, fieldLabel, '找不到候選群組控制型 select，可能已失效，請重新綁定這個欄位'
+    );
+    if (!controllerEl) return;
+
+    const groups = [];
+    for (const item of candidateItems) {
+      const el = await resolveWithRetry(item.value);
+      if (!el) {
+        markNeedsReview(fieldLabel, `找不到候選 select（對應「${item.controllerValue}」），可能已失效，請重新綁定這個欄位`, null);
+        continue;
+      }
+      await waitFor(() => (el.options && el.options.length > 0) || null);
+      groups.push({ controllerValue: item.controllerValue, el, optionTexts: Array.from(el.options).map((o) => o.textContent.trim()) });
+    }
+    if (!groups.length) return;
+
+    if (!sourceValue) {
+      markNeedsReview(fieldLabel, '來源網站沒有這個欄位的資料，需要手動填寫', controllerEl);
+      return;
+    }
+
+    const match = resolveCandidateGroupMatch(
+      sourceValue, groups.map((g) => ({ controllerValue: g.controllerValue, optionTexts: g.optionTexts })), { fuzzyAllowed }
+    );
+    if (!match.matched) {
+      markNeedsReview(fieldLabel, '找不到符合的選項，請手動選取', controllerEl);
+      return;
+    }
+
+    const targetGroup = groups.find((g) => g.controllerValue === match.controllerValue);
+
+    // 先切控制型 select 到目標候選群組對應的選項，等候選 select 的可見性切換完成。
+    const controllerOptionTexts = Array.from(controllerEl.options).map((o) => o.textContent.trim());
+    const controllerIndex = controllerOptionTexts.findIndex((t) => normalizeForMatch(t) === normalizeForMatch(match.controllerValue));
+    if (controllerIndex !== -1) {
+      controllerEl.value = controllerEl.options[controllerIndex].value;
+      controllerEl.dispatchEvent(new Event('change', { bubbles: true }));
+      await waitFor(() => (getComputedStyle(targetGroup.el).display !== 'none') || null, { timeoutMs: 500 });
+    }
+
+    // 清空非目標候選 select 的值——chosen1/chosen2 共用 name，兩者都有值會造成送出時的重複值歧義
+    // （見票券 03 已驗證技術事實）。
+    for (const group of groups) {
+      if (group.controllerValue === match.controllerValue) continue;
+      group.el.value = '';
+      group.el.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    // 最後才對目標候選 select 賦值。
+    targetGroup.el.value = targetGroup.el.options[match.optionIndex].value;
+    targetGroup.el.dispatchEvent(new Event('change', { bubbles: true }));
+
+    markNeedsReview(
+      fieldLabel, `已自動選取「${targetGroup.optionTexts[match.optionIndex]}」，請再次確認是否正確`, targetGroup.el
+    );
+  }
+
   // evidenceImages 走專用流程（PLAN_B.md「已定案設計」），不套用上面 plain/select/custom 的
   // 一般 applyItem 邏輯——那套邏輯是「賦值/選單點選」，附件欄位要做的是「解析出上傳 input，
   // 交給彙總視窗的按鈕觸發選檔」。這裡只負責解析，不等待使用者選檔（選檔的原生視窗需要真正
@@ -377,6 +443,12 @@
     for (const fieldPlan of plan) {
       if (fieldPlan.fieldName === 'evidenceImages') continue; // 附件走 resolveEvidenceUploadTarget()，見上方註解
       const fieldLabel = FIELD_LABELS[fieldPlan.fieldName] || fieldPlan.fieldName;
+      const violationSelector = fieldPlan.fieldName === 'violation' ? profile.fields.violation.selector : null;
+      // 候選元素群組（票券 03）走專用流程，不套用下面一般的 applyItem 逐 item 迴圈。
+      if (violationSelector && violationSelector.some((item) => item && item.role === 'candidate-controller')) {
+        await applyViolationCandidateGroup(violationSelector, fieldLabel, sourceData.violationText, settings.fuzzyMatchAllowed);
+        continue;
+      }
       const orderedItems = orderFieldItems(fieldPlan.fieldName, fieldPlan.items);
       for (const itemPlan of orderedItems) {
         await applyItem(fieldPlan.fieldName, fieldLabel, itemPlan, settings.fuzzyMatchAllowed);

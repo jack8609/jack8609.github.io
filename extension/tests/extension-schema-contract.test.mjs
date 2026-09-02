@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-const { LOGICAL_FIELDS, createEmptyProfile, upsertField, removeField, validateProfile, partitionEvidenceSelector } =
+const { LOGICAL_FIELDS, createEmptyProfile, upsertField, removeField, validateProfile, partitionEvidenceSelector, partitionViolationCandidateGroup } =
   await import('../lib/schema.js');
 
 assert.deepEqual(LOGICAL_FIELDS, [
@@ -381,6 +381,158 @@ assert.deepEqual(LOGICAL_FIELDS, [
   });
   assert.strictEqual(withEvidence.fields.evidenceImages.riskField, false, 'file-slots 欄位預設非風險欄位');
 }
+// 票券 03：violation 的候選元素群組（控制型 select role: 'candidate-controller' + 候選 select
+// role: 'candidate'，桃園 chose_type→chosen1/chosen2 用途）
+{
+  const good = upsertField(
+    createEmptyProfile({ siteId: 's1', displayName: 'S1', matchPatterns: ['*://s1/*'] }),
+    'date', { selector: [{ kind: 'plain', value: '#d' }] }
+  );
 
+  const withCandidateGroup = {
+    ...good,
+    fields: {
+      date: good.fields.date,
+      violation: {
+        riskField: true,
+        selector: [
+          { kind: 'select', value: '#chose_type', role: 'candidate-controller' },
+          { kind: 'select', value: '#chosen1', role: 'candidate', controllerValue: '動態違規' },
+          { kind: 'select', value: '#chosen2', role: 'candidate', controllerValue: '靜態違規' }
+        ]
+      }
+    },
+    fieldOrder: ['date', 'violation']
+  };
+  assert.deepEqual(
+    validateProfile(withCandidateGroup), { valid: true, errors: [] },
+    '控制型 select + 兩個互斥候選 select，各自帶不重複的 controllerValue 應通過驗證'
+  );
+
+  // 只綁控制型、還沒綁任何候選 select 的中間狀態（對應模式先綁控制型、再逐一新增候選的綁定流程）
+  // 也要能存檔，不能因為還沒有候選 select 就擋下來。
+  const withControllerOnly = {
+    ...good,
+    fields: {
+      date: good.fields.date,
+      violation: {
+        riskField: true,
+        selector: [{ kind: 'select', value: '#chose_type', role: 'candidate-controller' }]
+      }
+    },
+    fieldOrder: ['date', 'violation']
+  };
+  assert.deepEqual(
+    validateProfile(withControllerOnly), { valid: true, errors: [] },
+    '只綁控制型、還沒候選 select 的中間狀態也應通過驗證'
+  );
+
+  // 有候選 select 却沒有控制型 select：擋下來
+  const withCandidateNoController = {
+    ...good,
+    fields: {
+      date: good.fields.date,
+      violation: {
+        riskField: true,
+        selector: [{ kind: 'select', value: '#chosen1', role: 'candidate', controllerValue: '動態違規' }]
+      }
+    },
+    fieldOrder: ['date', 'violation']
+  };
+  assert.strictEqual(
+    validateProfile(withCandidateNoController).valid, false, '有候選 select 時必須剛好綁定 1 個控制型 select'
+  );
+
+  // 控制型 select 綁定 2 個：擋下來
+  const withTwoControllers = {
+    ...good,
+    fields: {
+      date: good.fields.date,
+      violation: {
+        riskField: true,
+        selector: [
+          { kind: 'select', value: '#chose_type', role: 'candidate-controller' },
+          { kind: 'select', value: '#chose_type2', role: 'candidate-controller' },
+          { kind: 'select', value: '#chosen1', role: 'candidate', controllerValue: '動態違規' }
+        ]
+      }
+    },
+    fieldOrder: ['date', 'violation']
+  };
+  assert.strictEqual(
+    validateProfile(withTwoControllers).valid, false, '候選群組控制型 select 最多只能綁定 1 個'
+  );
+
+  // 候選 select 缺少 controllerValue：擋下來
+  const withMissingControllerValue = {
+    ...good,
+    fields: {
+      date: good.fields.date,
+      violation: {
+        riskField: true,
+        selector: [
+          { kind: 'select', value: '#chose_type', role: 'candidate-controller' },
+          { kind: 'select', value: '#chosen1', role: 'candidate' }
+        ]
+      }
+    },
+    fieldOrder: ['date', 'violation']
+  };
+  assert.strictEqual(
+    validateProfile(withMissingControllerValue).valid, false, '候選 select 必須帶 controllerValue'
+  );
+
+  // 兩個候選 select 的 controllerValue 重複：擋下來（引擎無法判斷該切到哪一個）
+  const withDuplicateControllerValue = {
+    ...good,
+    fields: {
+      date: good.fields.date,
+      violation: {
+        riskField: true,
+        selector: [
+          { kind: 'select', value: '#chose_type', role: 'candidate-controller' },
+          { kind: 'select', value: '#chosen1', role: 'candidate', controllerValue: '動態違規' },
+          { kind: 'select', value: '#chosen2', role: 'candidate', controllerValue: '動態違規' }
+        ]
+      }
+    },
+    fieldOrder: ['date', 'violation']
+  };
+  assert.strictEqual(
+    validateProfile(withDuplicateControllerValue).valid, false, '候選 select 的 controllerValue 不可重複'
+  );
+
+  // candidate-controller/candidate role 只能用在 violation 欄位
+  const withCandidateRoleOnOtherField = {
+    ...good,
+    fields: {
+      date: { ...good.fields.date, selector: [{ kind: 'plain', value: '#d', role: 'candidate' }] }
+    },
+    fieldOrder: ['date']
+  };
+  assert.strictEqual(
+    validateProfile(withCandidateRoleOnOtherField).valid, false, 'candidate role 只能用在 violation 欄位'
+  );
+}
+
+// partitionViolationCandidateGroup：跟主要的控制型/候選 select 分開的共用純函式（票券 03）
+{
+  const withGroup = [
+    { kind: 'select', value: '#chose_type', role: 'candidate-controller' },
+    { kind: 'select', value: '#chosen1', role: 'candidate', controllerValue: '動態違規' },
+    { kind: 'select', value: '#chosen2', role: 'candidate', controllerValue: '靜態違規' }
+  ];
+  assert.deepEqual(
+    partitionViolationCandidateGroup(withGroup),
+    { controllerItem: withGroup[0], candidateItems: [withGroup[1], withGroup[2]] }
+  );
+
+  const withoutGroup = [{ kind: 'select', value: '#violation' }];
+  assert.deepEqual(
+    partitionViolationCandidateGroup(withoutGroup),
+    { controllerItem: null, candidateItems: [] },
+    '沒有候選群組時 controllerItem 要回傳 null，candidateItems 要回傳空陣列'
+  );
+}
 
 console.log('extension schema contract passed');

@@ -51,6 +51,22 @@ export function resolveOptionMatch(optionTexts, sourceValue, { valueMap, fuzzyAl
   return { matched: false, reason: 'not-found' };
 }
 
+// 票券 03（桃園違規事項候選元素群組）：依來源違規文字，依序跟每個候選群組的選項清單跑
+// resolveOptionMatch，第一個命中的候選群組就是答案。groups 是 content/fill-mode.js 在執行期
+// 讀取 DOM 當下即時組出的陣列，格式 [{ controllerValue, optionTexts }, ...]——controllerValue
+// 同時也是候選群組的識別鍵，以及控制型 select 要切到的選項文字（見 lib/schema.js 的
+// partitionViolationCandidateGroup）。都沒命中則回傳 matched:false，呼叫端一律標記待確認，
+// 不猜測該選哪一個候選群組。
+export function resolveCandidateGroupMatch(sourceValue, groups, { valueMap, fuzzyAllowed } = {}) {
+  for (const group of groups) {
+    const match = resolveOptionMatch(group.optionTexts, sourceValue, { valueMap, fuzzyAllowed });
+    if (match.matched) {
+      return { matched: true, controllerValue: group.controllerValue, optionIndex: match.index, reason: match.reason };
+    }
+  }
+  return { matched: false, reason: 'not-found' };
+}
+
 // 支援三種西元轉民國格式（見對應模式錄製時的 promptDateTransform 四選一）：
 // 'westernToMinguo' → 斜線格式（115/08/17，月/日補零）；
 // 'westernToMinguoChinese' → 中文全形格式（115 年 8 月 17 日，台北市違規日期需要，月/日不補零）；
@@ -98,6 +114,14 @@ function buildItemPlan(fieldName, item, index, sourceData, itemCount) {
   // 'no-source-value' 預設分支（那個訊息文案跟附件上傳的實際情況不符）。
   if (item.kind === 'file' || item.kind === 'file-trigger' || item.kind === 'file-slots') {
     return { item, skipReason: 'unsupported-kind' };
+  }
+
+  // 票券 03：violation 欄位的候選群組控制型 select（role: 'candidate-controller'）與候選 select
+  // （role: 'candidate'）一律不套用下面的一般 select 賦值邏輯——它們走 content/fill-mode.js 的
+  // 專用候選群組流程（讀取即時 DOM 選項、比對來源文字、決定切控制值/清空其他候選/賦值目標候選），
+  // 這裡只需要正確標記，不能落到下面 fieldName === 'violation' 分支把來源文字誤填進控制型 select。
+  if (fieldName === 'violation' && (item.role === 'candidate-controller' || item.role === 'candidate')) {
+    return { item, skipReason: 'candidate-group-pending' };
   }
 
   if (fieldName === 'location') return buildLocationItemPlan(item, sourceData);
