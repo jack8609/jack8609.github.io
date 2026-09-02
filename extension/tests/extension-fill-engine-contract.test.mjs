@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 
-const { resolveOptionMatch, applyDateTransform, buildFillPlan, resolveCandidateGroupMatch } = await import('../lib/fill-engine.js');
+const { resolveOptionMatch, applyDateTransform, buildFillPlan, resolveCandidateGroupMatch, buildDateTimeMergeValue } =
+  await import('../lib/fill-engine.js');
 
 // resolveOptionMatch：valueMap 優先 > 選項文字完全比對 > （fuzzyAllowed 才）模糊比對
 {
@@ -271,6 +272,43 @@ const { resolveOptionMatch, applyDateTransform, buildFillPlan, resolveCandidateG
     candidateGroupPlan[0].items.map((i) => i.skipReason),
     ['candidate-group-pending', 'candidate-group-pending', 'candidate-group-pending']
   );
+
+  // date/time 合併欄位（票券 04：高雄違規日期/時間單一 DOM 元素，role: 'datetime-merge'）：
+  // 同一個 item 掛在 date、time 兩個欄位下，都要算出完整的合併字串，不能只填半邊。
+  const mergeItem = { kind: 'plain', value: '#ContentPlaceHolder1_ViolationDate', role: 'datetime-merge' };
+  const dateTimeMergeProfile = {
+    fieldOrder: ['date', 'time'],
+    fields: {
+      date: { riskField: false, selector: [mergeItem] },
+      time: { riskField: false, selector: [mergeItem] }
+    }
+  };
+  const dateTimeMergePlan = buildFillPlan(sourceData, dateTimeMergeProfile);
+  const [datePlan, timePlan] = dateTimeMergePlan;
+  assert.equal(datePlan.items[0].targetValue, '2026-08-17 13:05', 'date 欄位下的合併項也要算出完整字串');
+  assert.equal(timePlan.items[0].targetValue, '2026-08-17 13:05', 'time 欄位下的合併項也要算出完整字串（跟 date 欄位相同）');
+
+  // date/hour/minute 任一缺值就不猜測，直接 skip
+  const dateTimeMergeMissingHour = buildFillPlan({ ...sourceData, hour: '' }, dateTimeMergeProfile);
+  assert.equal(dateTimeMergeMissingHour[0].items[0].skipReason, 'no-source-value');
+  const dateTimeMergeMissingDate = buildFillPlan({ ...sourceData, date: '' }, dateTimeMergeProfile);
+  assert.equal(dateTimeMergeMissingDate[0].items[0].skipReason, 'no-source-value');
+}
+
+// buildDateTimeMergeValue（票券 04）：純函式，組合出 'YYYY-MM-DD HH:mm' 格式字串
+{
+  assert.equal(buildDateTimeMergeValue({ date: '2026-08-01', hour: '13', minute: '45' }), '2026-08-01 13:45');
+
+  // hour/minute 缺補零時要自行補齊，不假設呼叫端一定會補好
+  assert.equal(buildDateTimeMergeValue({ date: '2026-08-01', hour: '3', minute: '5' }), '2026-08-01 03:05', '單位數的 hour/minute 要補零');
+  assert.equal(buildDateTimeMergeValue({ date: '2026-08-01', hour: '0', minute: '0' }), '2026-08-01 00:00', 'hour/minute 為 0（字串 "0"）要視為有效值，補零成 00:00，不能被當成缺值');
+
+  // date/hour/minute 任一缺值就回傳空字串，不猜測
+  assert.equal(buildDateTimeMergeValue({ date: '', hour: '13', minute: '45' }), '');
+  assert.equal(buildDateTimeMergeValue({ date: '2026-08-01', hour: '', minute: '45' }), '');
+  assert.equal(buildDateTimeMergeValue({ date: '2026-08-01', hour: '13', minute: '' }), '');
+  assert.equal(buildDateTimeMergeValue({}), '');
+  assert.equal(buildDateTimeMergeValue(undefined), '');
 }
 
 console.log('extension-fill-engine-contract.test.mjs OK');

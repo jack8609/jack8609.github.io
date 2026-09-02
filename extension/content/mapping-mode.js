@@ -15,7 +15,8 @@
   ]);
   const {
     LOGICAL_FIELDS, createEmptyProfile, upsertField, removeField, LOCATION_ROLES, LOCATION_ROLE_LABELS,
-    EVIDENCE_ROLE_LABELS, FIELD_LABELS, partitionEvidenceSelector, VIOLATION_ROLE_LABELS, partitionViolationCandidateGroup
+    EVIDENCE_ROLE_LABELS, FIELD_LABELS, partitionEvidenceSelector, VIOLATION_ROLE_LABELS, partitionViolationCandidateGroup,
+    DATETIME_ROLE_LABELS, findDateTimeMergeItem
   } = schemaMod;
   const { createProfileStore } = storageMod;
   const { siteIdFromHostname, originPatternFromUrl } = siteMod;
@@ -107,6 +108,8 @@
         container.appendChild(document.createTextNode(`${item.kind}:${text} [${VIOLATION_ROLE_LABELS[item.role]}]`));
       } else if (fieldName === 'violation' && item.role === 'candidate') {
         container.appendChild(document.createTextNode(`${item.kind}:${text} [${VIOLATION_ROLE_LABELS[item.role]}→${item.controllerValue}]`));
+      } else if ((fieldName === 'date' || fieldName === 'time') && item.role === 'datetime-merge') {
+        container.appendChild(document.createTextNode(`${item.kind}:${text} [${DATETIME_ROLE_LABELS[item.role]}]`));
       } else {
         container.appendChild(document.createTextNode(`${item.kind}:${text}`));
       }
@@ -175,10 +178,14 @@
       // 想換掉候選群組要先按「清除」重來，不能用這顆按鈕。
       const hasViolationCandidateGroup = fieldName === 'violation' && field &&
         field.selector.some((item) => item.role === 'candidate-controller' || item.role === 'candidate');
-      bindBtn.disabled = hasViolationCandidateGroup;
+      // 票券 04：date/time 一旦綁了合併欄位（同一個 DOM 元素同時服務 date+time），這顆一般
+      // 「重新綁定」按鈕理由跟上面 hasViolationCandidateGroup 一樣——單一新元素會整個覆蓋掉
+      // selector，破壞掉「兩邊都要指向同一個元素」的結構，想換掉要用專屬按鈕或先「清除」。
+      const dateTimeMergeItem = (fieldName === 'date' || fieldName === 'time') && field && findDateTimeMergeItem(field.selector);
+      bindBtn.disabled = hasViolationCandidateGroup || !!dateTimeMergeItem;
       bindBtn.title = hasViolationCandidateGroup
         ? '這個欄位已綁定候選群組，請用下面的專屬按鈕調整，或先「清除」再重新綁定'
-        : '';
+        : (dateTimeMergeItem ? '這個欄位已綁定日期/時間合併欄位，請用下面的專屬按鈕調整，或先「清除」再重新綁定' : '');
       bindBtn.addEventListener('click', () => startPicking(fieldName, false));
       li.appendChild(bindBtn);
 
@@ -190,11 +197,11 @@
       // 情境；file-slots（票券 01：固定多槽位附件）則相反，需要依序多次點選才能綁滿 N 個槽位，
       // 只在這個 kind 底下才開放「+ 新增元素」。已經綁了確認上傳鈕（票券 02）時也要停用：
       // 確認上傳鈕只能搭配剛好 1 個主要 item，再新增下去會被 schema.js 擋下存檔。violation 欄位
-      // 綁了候選群組時也要停用，理由同上面 bindBtn。
+      // 綁了候選群組、date/time 欄位綁了合併欄位時也要停用，理由同上面 bindBtn。
       const isFileTriggerField = fieldName === 'evidenceImages' && field && field.selector[0].kind === 'file-trigger';
       const hasConfirmUploadBound = fieldName === 'evidenceImages' && field &&
         field.selector.some((item) => item.role === 'confirm-upload');
-      addBtn.disabled = !field || isFileTriggerField || hasConfirmUploadBound || hasViolationCandidateGroup;
+      addBtn.disabled = !field || isFileTriggerField || hasConfirmUploadBound || hasViolationCandidateGroup || !!dateTimeMergeItem;
       addBtn.addEventListener('click', () => startPicking(fieldName, true));
       li.appendChild(addBtn);
 
@@ -242,6 +249,20 @@
         li.appendChild(candidateBtn);
       }
 
+      // date/time 合併欄位（票券 04：高雄違規日期/時間單一 DOM 元素）是 date、time 兩個欄位
+      // 專屬、選填的另一種綁定方式，只在 date 欄位這一列放一顆專屬按鈕（不分開放兩顆），因為綁定
+      // /清除都是同一個動作、一次處理兩個欄位（見 handlePick／clearField 對應邏輯），放兩顆容易
+      // 讓使用者誤以為要各自綁一次。
+      if (fieldName === 'date') {
+        const mergeItem = field && findDateTimeMergeItem(field.selector);
+        const mergeBtn = document.createElement('button');
+        mergeBtn.type = 'button';
+        mergeBtn.textContent = mergeItem ? '重新綁定日期/時間合併欄位' : '+ 綁定日期/時間合併欄位（選填）';
+        mergeBtn.title = '部分網站（例如高雄）違規日期與時間合併成同一個欄位，這裡綁定那個共用元素，綁定後日期/時間兩個邏輯欄位會自動標記為使用同一元素';
+        mergeBtn.addEventListener('click', () => startPicking('date', false, 'datetime-merge'));
+        li.appendChild(mergeBtn);
+      }
+
       if (field) {
         const clearBtn = document.createElement('button');
         clearBtn.type = 'button';
@@ -264,7 +285,9 @@
           ? `請在頁面上點選「${targetLabel}」的候選群組控制型 select（按 Esc 取消）`
           : pickingField.role === 'candidate'
             ? `請在頁面上點選「${targetLabel}」的其中一個候選 select（按 Esc 取消）`
-            : `請在頁面上點選「${targetLabel}」對應的欄位（按 Esc 取消）`;
+            : pickingField.role === 'datetime-merge'
+              ? '請在頁面上點選違規日期/時間合併使用的那個欄位（按 Esc 取消）'
+              : `請在頁面上點選「${targetLabel}」對應的欄位（按 Esc 取消）`;
       body.appendChild(hint);
     }
   }
@@ -733,6 +756,9 @@
     // 候選 select 各自對應一種 pickingField.role。
     const isCandidateControllerPick = pickingField.fieldName === 'violation' && pickingField.role === 'candidate-controller';
     const isCandidatePick = pickingField.fieldName === 'violation' && pickingField.role === 'candidate';
+    // 票券 04：日期/時間合併欄位（高雄）專用——單一元素同時服務 date/time 兩個邏輯欄位，
+    // 固定用 fieldName: 'date' 發起選取（見 renderPanel 的專屬按鈕）。
+    const isDateTimeMergePick = pickingField.fieldName === 'date' && pickingField.role === 'datetime-merge';
     const el = isEvidenceField ? rawEl : normalizePickTarget(rawEl);
     const context = { nearbySelectedValues: collectNearbySelectedValues(el) };
     // <input type=button/submit> 沒有可用的文字內容/id/name 時（新北市「新增檔案」按鈕正是這種
@@ -767,7 +793,9 @@
     // 存在的多槽位附件（file-slots，票券 01）；點到其他元素（例如按鈕）才視為需要祖先鏈反推
     // 真正上傳 input 的觸發元件（file-trigger，沿用既有行為）。
     const isFileSlotInput = isEvidenceField && el.tagName === 'INPUT' && (el.getAttribute('type') || '').toLowerCase() === 'file';
-    const kind = isEvidenceField ? (isFileSlotInput ? 'file-slots' : 'file-trigger') : detectFieldKind(info);
+    // 合併欄位（票券 04）已經實測確認底層是普通 <input>，直接賦值可行，不需要包裝器互動，固定
+    // 強制成 'plain'，不依賴 detectFieldKind（避免被誤判成 custom）。
+    const kind = isEvidenceField ? (isFileSlotInput ? 'file-slots' : 'file-trigger') : (isDateTimeMergePick ? 'plain' : detectFieldKind(info));
     const candidates = buildSelectorCandidates(info);
     // 錄製當下就對整份文件驗證候選 selector 的命中數是否唯一，而不是等事後人工比對才發現不唯一。
     const descriptor = pickUniqueDescriptor(candidates);
@@ -795,9 +823,11 @@
 
     // 違規日期邏輯欄位：對應模式錄製時要詢問目標網站需要的日期格式（見 PLAN.md 補充規則）。
     // 不限 kind === 'plain'——台北市違規日期實際是 Vuetify 點選式（kind: 'custom'），一樣需要
-    // 選格式（見 spec.md 問題 5：填值時走點擊選單流程，比對的是這裡選出來的目標文字）。
+    // 選格式（見 spec.md 問題 5：填值時走點擊選單流程，比對的是這裡選出來的目標文字）。日期/時間
+    // 合併欄位（票券 04）不需要問——合併字串是 lib/fill-engine.js 的 buildDateTimeMergeValue
+    // 直接組出來的固定格式，不套用一般的西元轉民國 transform。
     let transform;
-    if (!isEvidenceField && fieldName === 'date') {
+    if (!isEvidenceField && fieldName === 'date' && !isDateTimeMergePick) {
       transform = await promptDateTransform();
     }
 
@@ -813,6 +843,8 @@
       role = 'candidate-controller';
     } else if (isCandidatePick) {
       role = 'candidate';
+    } else if (isDateTimeMergePick) {
+      role = 'datetime-merge';
     }
 
     // 候選 select 綁定時額外詢問「控制型 select 切到哪個選項文字，這份候選清單才會生效」
@@ -837,6 +869,18 @@
       ...(role ? { role } : {}),
       ...(controllerValue ? { controllerValue } : {})
     };
+
+    // 日期/時間合併欄位（票券 04）不套用下面一般的單一欄位 selector 組裝邏輯——同一個 item 要
+    // 同時寫進 date、time 兩個邏輯欄位的 selector 陣列（見 lib/schema.js validateProfile 的
+    // 跨欄位結構檢查），一律整個覆蓋（合併欄位固定只能有這 1 個 item，不支援 append/累加）。
+    if (isDateTimeMergePick) {
+      profile = upsertField(profile, 'date', { selector: [newItem] });
+      profile = upsertField(profile, 'time', { selector: [newItem] });
+      await store.saveProfile(profile);
+      stopPicking();
+      return;
+    }
+
     // 確認上傳按鈕（票券 02）跟主要的檔案輸入 item 分開維護：重新綁定/新增主要 item 時不能把
     // 現有確認按鈕一起覆蓋掉，反之亦然；確認按鈕固定放在 selector 陣列最後，讓
     // field.selector[0] 永遠是主要 item（resolveEvidenceUploadTarget 與
@@ -877,7 +921,14 @@
   }
 
   function clearField(fieldName) {
+    const field = profile.fields[fieldName];
+    // 票券 04：合併欄位跨 date/time 兩個獨立邏輯欄位，只清其中一邊會留下「另一邊還綁著孤兒合併
+    // 項」的無效狀態（違反 schema.js validateProfile 的跨欄位結構檢查），清除時要兩邊一起清掉。
+    const hasDateTimeMerge = field && !!findDateTimeMergeItem(field.selector);
     profile = removeField(profile, fieldName);
+    if (hasDateTimeMerge) {
+      profile = removeField(profile, fieldName === 'date' ? 'time' : 'date');
+    }
     store.saveProfile(profile);
     renderPanel();
   }

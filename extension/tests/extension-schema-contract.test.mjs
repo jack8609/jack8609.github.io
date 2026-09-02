@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 
-const { LOGICAL_FIELDS, createEmptyProfile, upsertField, removeField, validateProfile, partitionEvidenceSelector, partitionViolationCandidateGroup } =
-  await import('../lib/schema.js');
+const {
+  LOGICAL_FIELDS, createEmptyProfile, upsertField, removeField, validateProfile, partitionEvidenceSelector,
+  partitionViolationCandidateGroup, findDateTimeMergeItem
+} = await import('../lib/schema.js');
 
 assert.deepEqual(LOGICAL_FIELDS, [
   'date', 'time', 'plate', 'location', 'description', 'violation', 'evidenceImages'
@@ -533,6 +535,94 @@ assert.deepEqual(LOGICAL_FIELDS, [
     { controllerItem: null, candidateItems: [] },
     '沒有候選群組時 controllerItem 要回傳 null，candidateItems 要回傳空陣列'
   );
+}
+
+// 票券 04：date/time 合併欄位（高雄違規日期/時間單一 DOM 元素，role: 'datetime-merge'）
+{
+  const base = createEmptyProfile({ siteId: 's1', displayName: 'S1', matchPatterns: ['*://s1/*'] });
+  const mergeItem = { kind: 'plain', value: '#ContentPlaceHolder1_ViolationDate', role: 'datetime-merge' };
+
+  const withMerge = {
+    ...base,
+    fields: {
+      date: { riskField: false, selector: [mergeItem] },
+      time: { riskField: false, selector: [mergeItem] }
+    },
+    fieldOrder: ['date', 'time']
+  };
+  assert.deepEqual(
+    validateProfile(withMerge), { valid: true, errors: [] },
+    'date/time 都綁定同一個合併 item（相同 value）應通過驗證'
+  );
+
+  // 只有 date 綁了合併項，time 沒有：擋下來
+  const onlyDateMerge = {
+    ...base,
+    fields: {
+      date: { riskField: false, selector: [mergeItem] },
+      time: { riskField: false, selector: [{ kind: 'select', value: '#minute' }] }
+    },
+    fieldOrder: ['date', 'time']
+  };
+  assert.strictEqual(
+    validateProfile(onlyDateMerge).valid, false, 'date/time 合併欄位必須兩邊都綁定，不能只綁一邊'
+  );
+
+  // 只有 date 綁了合併項，time 完全沒綁定欄位：一樣擋下來
+  const onlyDateMergeNoTimeField = {
+    ...base,
+    fields: { date: { riskField: false, selector: [mergeItem] } },
+    fieldOrder: ['date']
+  };
+  assert.strictEqual(
+    validateProfile(onlyDateMergeNoTimeField).valid, false, 'time 完全沒綁定欄位時，date 的合併項一樣要被擋下來'
+  );
+
+  // date/time 都綁了合併項，但指向不同 DOM 元素（value 不同）：擋下來，賦值時會有歧義
+  const mismatchedMergeValue = {
+    ...base,
+    fields: {
+      date: { riskField: false, selector: [mergeItem] },
+      time: { riskField: false, selector: [{ ...mergeItem, value: '#SomeOtherElement' }] }
+    },
+    fieldOrder: ['date', 'time']
+  };
+  assert.strictEqual(
+    validateProfile(mismatchedMergeValue).valid, false, 'date/time 合併欄位的 value 必須指向同一個 DOM 元素'
+  );
+
+  // date 綁了合併項，但 selector 陣列還多了其他 item：擋下來，合併欄位固定只能有這 1 個 item
+  const dateMergeWithExtraItem = {
+    ...base,
+    fields: {
+      date: { riskField: false, selector: [mergeItem, { kind: 'plain', value: '#extra' }] },
+      time: { riskField: false, selector: [mergeItem] }
+    },
+    fieldOrder: ['date', 'time']
+  };
+  assert.strictEqual(
+    validateProfile(dateMergeWithExtraItem).valid, false, 'date 綁定合併欄位時 selector 只能有這 1 個 item'
+  );
+
+  // datetime-merge role 只能用在 date/time 欄位
+  const mergeRoleOnOtherField = {
+    ...base,
+    fields: {
+      violation: { riskField: false, selector: [{ kind: 'select', value: '#v', role: 'datetime-merge' }] }
+    },
+    fieldOrder: ['violation']
+  };
+  assert.strictEqual(
+    validateProfile(mergeRoleOnOtherField).valid, false, 'datetime-merge role 只能用在 date/time 欄位'
+  );
+}
+
+// findDateTimeMergeItem：從單一欄位的 selector 陣列裡找出合併項的共用純函式（票券 04）
+{
+  const mergeItem = { kind: 'plain', value: '#d', role: 'datetime-merge' };
+  assert.deepEqual(findDateTimeMergeItem([mergeItem]), mergeItem);
+  assert.deepEqual(findDateTimeMergeItem([{ kind: 'plain', value: '#d' }]), null, '沒有合併項時要回傳 null');
+  assert.deepEqual(findDateTimeMergeItem([]), null, '空陣列要回傳 null');
 }
 
 console.log('extension schema contract passed');

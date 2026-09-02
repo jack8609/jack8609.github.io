@@ -440,6 +440,10 @@
   async function run() {
     const settings = await store.getSettings();
     const plan = buildFillPlan(sourceData, profile);
+    // 票券 04：date/time 合併欄位（高雄）同一個 item 會同時出現在 date、time 兩個欄位的
+    // selector 陣列裡（見 mapping-mode.js 的綁定邏輯），只需要賦值一次；用 item.value 序列化
+    // 當 key 去重，避免因為 date 迴圈跑一次、time 迴圈又跑一次而重複賦值/重複觸發 change 事件。
+    const handledDateTimeMergeKeys = new Set();
     for (const fieldPlan of plan) {
       if (fieldPlan.fieldName === 'evidenceImages') continue; // 附件走 resolveEvidenceUploadTarget()，見上方註解
       const fieldLabel = FIELD_LABELS[fieldPlan.fieldName] || fieldPlan.fieldName;
@@ -451,6 +455,11 @@
       }
       const orderedItems = orderFieldItems(fieldPlan.fieldName, fieldPlan.items);
       for (const itemPlan of orderedItems) {
+        if (itemPlan.item.role === 'datetime-merge') {
+          const key = JSON.stringify(itemPlan.item.value);
+          if (handledDateTimeMergeKeys.has(key)) continue;
+          handledDateTimeMergeKeys.add(key);
+        }
         await applyItem(fieldPlan.fieldName, fieldLabel, itemPlan, settings.fuzzyMatchAllowed);
       }
     }

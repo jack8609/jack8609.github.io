@@ -67,6 +67,18 @@ export function resolveCandidateGroupMatch(sourceValue, groups, { valueMap, fuzz
   return { matched: false, reason: 'not-found' };
 }
 
+// 票券 04（高雄違規日期/時間單一 DOM 元素）：date/time 兩個邏輯欄位各自的原始值需要合併寫入
+// 同一個元素，格式固定 'YYYY-MM-DD HH:mm'。任一部分缺值就不猜測，回傳空字串交給呼叫端 skip。
+// hour/minute 來源（modules/app/violation-editor.js）理論上已經補零，這裡仍自行 padStart
+// 防禦，不假設呼叫端一定會補好（見票券驗收標準要求涵蓋補零邊界案例）。
+export function buildDateTimeMergeValue(sourceData) {
+  const { date, hour, minute } = sourceData || {};
+  if (!date || !hour || !minute) return '';
+  const paddedHour = String(hour).padStart(2, '0');
+  const paddedMinute = String(minute).padStart(2, '0');
+  return `${date} ${paddedHour}:${paddedMinute}`;
+}
+
 // 支援三種西元轉民國格式（見對應模式錄製時的 promptDateTransform 四選一）：
 // 'westernToMinguo' → 斜線格式（115/08/17，月/日補零）；
 // 'westernToMinguoChinese' → 中文全形格式（115 年 8 月 17 日，台北市違規日期需要，月/日不補零）；
@@ -122,6 +134,15 @@ function buildItemPlan(fieldName, item, index, sourceData, itemCount) {
   // 這裡只需要正確標記，不能落到下面 fieldName === 'violation' 分支把來源文字誤填進控制型 select。
   if (fieldName === 'violation' && (item.role === 'candidate-controller' || item.role === 'candidate')) {
     return { item, skipReason: 'candidate-group-pending' };
+  }
+
+  // 票券 04：date/time 合併欄位（高雄違規日期/時間單一 DOM 元素）——不論這個 item 掛在 date 或
+  // time 哪個邏輯欄位下，一律計算完整的合併字串（兩邊都補齊才寫，不能只填半邊），避免 date 迴圈
+  // 算出只有日期、time 迴圈算出只有時間的半殘值，先寫後寫互相覆蓋（見 content/fill-mode.js 的
+  // 去重賦值機制，同一個 item 會出現在 date、time 兩個欄位的 selector 陣列裡）。
+  if ((fieldName === 'date' || fieldName === 'time') && item.role === 'datetime-merge') {
+    const merged = buildDateTimeMergeValue(sourceData);
+    return merged ? { item, targetValue: merged } : { item, skipReason: 'no-source-value' };
   }
 
   if (fieldName === 'location') return buildLocationItemPlan(item, sourceData);

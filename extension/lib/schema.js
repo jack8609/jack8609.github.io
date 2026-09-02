@@ -57,6 +57,20 @@ export function partitionViolationCandidateGroup(selector) {
   return { controllerItem, candidateItems };
 }
 
+// 票券 04 新增：date/time 的 selector item 可選標記 role，供高雄這類「違規日期／時間合併成
+// 同一個 DOM 元素」的網站使用（見 .scratch/six-cities-mapping/issues/04-kaohsiung-datetime-merge.md）。
+// 跟 LOCATION_ROLES 等其他角色列舉不同的是，這個角色橫跨 date、time 兩個獨立邏輯欄位——同一個
+// item（相同 value）必須同時綁在 date.selector 與 time.selector 底下，各自剛好只有這 1 個
+// item，見下面 validateProfile 的跨欄位結構檢查。
+export const DATETIME_ROLES = ['datetime-merge'];
+export const DATETIME_ROLE_LABELS = { 'datetime-merge': '日期時間合併' };
+
+// 從單一欄位的 selector 陣列裡找出合併項（找不到回傳 null），validateProfile 的跨欄位檢查與
+// content/mapping-mode.js 的綁定/顯示邏輯共用，避免各自維護一份一樣的 find。
+export function findDateTimeMergeItem(selector) {
+  return (Array.isArray(selector) && selector.find((item) => item && item.role === 'datetime-merge')) || null;
+}
+
 // select/custom 一律是風險欄位（PLAN.md）。kind 掛在每個 selector item 上而不是欄位層級，
 // 因為同一個邏輯欄位常常混合不同 kind 的真實 DOM 元素（例如台北市「違規地點」裡，行政區的
 // 觸發元件是 custom，但路名／公里／巷／弄卻是可以直接賦值的 plain）——欄位層級只存一個 kind
@@ -143,11 +157,15 @@ export function validateProfile(profile) {
         }
         // role 的合法值依欄位而異：location 用 LOCATION_ROLES，evidenceImages 用 EVIDENCE_ROLES
         // （票券 02 的確認上傳按鈕），violation 用 VIOLATION_ROLES（票券 03 的候選元素群組），
-        // 其餘欄位一律不接受 role。
+        // date/time 用 DATETIME_ROLES（票券 04 的合併欄位），其餘欄位一律不接受 role。
         if (item && item.role !== undefined) {
           const validRoles = name === 'location'
             ? LOCATION_ROLES
-            : (name === 'evidenceImages' ? EVIDENCE_ROLES : (name === 'violation' ? VIOLATION_ROLES : []));
+            : (name === 'evidenceImages'
+              ? EVIDENCE_ROLES
+              : (name === 'violation'
+                ? VIOLATION_ROLES
+                : ((name === 'date' || name === 'time') ? DATETIME_ROLES : [])));
           if (!validRoles.includes(item.role)) {
             errors.push(`欄位 ${name} 第 ${idx} 個 selector item 的 role 不合法`);
           }
@@ -203,6 +221,27 @@ export function validateProfile(profile) {
       const controllerValues = candidateItems.map((item) => item.controllerValue).filter(Boolean);
       if (new Set(controllerValues).size !== controllerValues.length) {
         errors.push(`欄位 ${name} 的候選 select controllerValue 不可重複`);
+      }
+    }
+
+    // date/time 合併欄位（票券 04：高雄違規日期/時間單一 DOM 元素）：這個角色橫跨 date、time
+    // 兩個獨立欄位，不像 evidenceImages/violation 的角色劃分只發生在單一欄位內部，無法塞進上面
+    // 逐欄位的迴圈（那個迴圈天生一次只看得到一個欄位），獨立成這段跨欄位檢查。只要任一邊綁了
+    // 合併項，兩邊就都必須綁、且各自剛好只有這 1 個 item，兩邊的 value 也必須指向同一個 DOM
+    // 元素，否則賦值時到底該找哪個元素會有歧義（見 fill-engine.js/fill-mode.js 的去重賦值機制）。
+    const dateField = profile.fields.date;
+    const timeField = profile.fields.time;
+    const dateMergeItem = dateField && findDateTimeMergeItem(dateField.selector);
+    const timeMergeItem = timeField && findDateTimeMergeItem(timeField.selector);
+    if (dateMergeItem || timeMergeItem) {
+      if (!dateMergeItem || !timeMergeItem) {
+        errors.push('date/time 合併欄位必須同時綁定在 date 與 time 兩個邏輯欄位下');
+      } else {
+        if (dateField.selector.length !== 1) errors.push('date 欄位綁定合併欄位時，selector 只能有這 1 個 item');
+        if (timeField.selector.length !== 1) errors.push('time 欄位綁定合併欄位時，selector 只能有這 1 個 item');
+        if (JSON.stringify(dateMergeItem.value) !== JSON.stringify(timeMergeItem.value)) {
+          errors.push('date/time 合併欄位必須指向同一個 DOM 元素（value 需相同）');
+        }
       }
     }
   }
