@@ -4,7 +4,7 @@
 
 **Blocked by：** None — can start immediately（技術細節已於 2026-08-24 用 chrome-devtools-mcp 對桃園已驗證分頁唯讀實測確認，見 `.scratch/six-cities-survey/taoyuan.md` 與 `SUMMARY.md` 落差 5）。
 
-**Status:** ready-for-agent
+**Status:** done
 
 ## 已知技術事實（供實作參考，不需重新驗證）
 
@@ -20,7 +20,16 @@
 - [x] 純函式部分（比對邏輯、決定要清空哪些候選）有 contract test，涵蓋「命中候選 1」「命中候選 2」「兩邊都沒命中」三種情境。
 - [x] 既有 extension contract test 全綠。
 - [x] `/code-review` 兩軸（Standards + Spec）皆已執行，沒有未處理的硬性違規。
-- [ ] 使用者已用真實瀏覽器對桃園網站驗收：分別測試「來源文字命中動態違規清單」與「命中靜態違規清單」兩種情境，確認 `chose_type` 正確切換、目標 select 選到正確條文、另一個候選 select 的值確實被清空。
+- [x] 使用者已用真實瀏覽器對桃園網站驗收：分別測試「來源文字命中動態違規清單」與「命中靜態違規清單」兩種情境，確認 `chose_type` 正確切換、目標 select 選到正確條文、另一個候選 select 的值確實被清空。
+
+## 驗收過程中發現並修正的根因（2026-09-06 補記）
+
+手動驗收一開始卡在「不管怎麼綁定都提示找不到對應的違規項目」，用 chrome-devtools-mcp 對已驗證分頁做唯讀實測後定位到兩個根因並修正：
+
+1. `chosen1`/`chosen2` 的選項文字幾乎都帶結尾句號（例如「未戴安全帽。」），但 `modules/app/violation-items.txt` 桃園市清單原本不帶句號，`fuzzyMatchAllowed` 預設 `false` 時完全比對不到。修正：`extension/lib/fill-engine.js` 新增 `stripTrailingTerminalPunctuation()` 與比對層 `terminal-punctuation-normalized`（跟既有的路段幾段數字轉換同等級，屬等價比對、不受 `fuzzyAllowed` 限制），並補上 contract test。
+2. `modules/app/violation-items.txt` 的桃園市清單本身跟真實網站選項用字有落差，已依實測抓到的 `chose_type`/`chosen1`/`chosen2` 選項全數改成逐字相同（50 筆）。
+
+控制型 select 切換候選 select 可見性的合成 `change` 事件機制經實測確認運作正常，不是問題來源。
 
 ## 需要使用者手動驗收的項目
 

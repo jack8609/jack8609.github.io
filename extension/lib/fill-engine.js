@@ -11,6 +11,13 @@ export function normalizeForMatch(text) {
   return String(text ?? '').replace(/\s+/g, '').trim();
 }
 
+// 部分網站的選項文字結尾會帶句號（例如桃園「未戴安全帽。」），但 App 內建違規清單
+// （modules/app/violation-items.txt）慣例上不帶句號，純標點差異不影響語意，屬於等價比對而非
+// 猜測，見下面 resolveOptionMatch 的 'terminal-punctuation-normalized' 比對層。
+export function stripTrailingTerminalPunctuation(text) {
+  return text.replace(/[。.]+$/, '');
+}
+
 // 依優先序決定 select/custom 欄位要選哪個選項：valueMap 明確登記 > 選項文字完全比對 >
 // （fuzzyAllowed 才）退而求其次的子字串包含比對。valueMap 記錄的是「目標選項文字→來源文字」，
 // 供兩邊用詞不完全一致時橋接（見 PLAN.md schema 範例與 mapping-mode.js 的 showValueMapModal）。
@@ -39,6 +46,15 @@ export function resolveOptionMatch(optionTexts, sourceValue, { valueMap, fuzzyAl
     (t) => canonicalizeRoadSegmentNumerals(normalizeForMatch(t)) === canonicalSource
   );
   if (canonicalIndex !== -1) return { matched: true, index: canonicalIndex, reason: 'road-numeral-canonical' };
+
+  // 目標網站選項結尾句號有無不一致時（桃園違規法條清單幾乎每一項都帶句號），去除兩邊結尾句號
+  // 再比對一次，這跟上面的路段幾段數字寫法一樣是等價比對、不是鬆散猜測，不受 fuzzyAllowed
+  // 開關限制（見 stripTrailingTerminalPunctuation 上方註解）。
+  const noPunctuationSource = stripTrailingTerminalPunctuation(normalizedSource);
+  const noPunctuationIndex = optionTexts.findIndex(
+    (t) => stripTrailingTerminalPunctuation(normalizeForMatch(t)) === noPunctuationSource
+  );
+  if (noPunctuationIndex !== -1) return { matched: true, index: noPunctuationIndex, reason: 'terminal-punctuation-normalized' };
 
   if (fuzzyAllowed) {
     const fuzzyIndex = optionTexts.findIndex((t) => {

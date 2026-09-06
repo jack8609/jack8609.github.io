@@ -65,6 +65,30 @@ const { resolveOptionMatch, applyDateTransform, buildFillPlan, resolveCandidateG
   );
 }
 
+// resolveOptionMatch：目標網站選項結尾句號有無不一致時（真實案例：桃園違規法條選項幾乎每一項
+// 都帶句號，但 modules/app/violation-items.txt 內建清單不帶句號），去除結尾句號後比對（介於
+// road-numeral-canonical 跟 fuzzy 之間，不受 fuzzyAllowed 限制，因為純標點差異不是猜測）
+{
+  const options = ['所載貨物滲漏、飛散、脫落、掉落。', '未戴安全帽。'];
+
+  assert.deepEqual(
+    resolveOptionMatch(options, '未戴安全帽', { fuzzyAllowed: false }),
+    { matched: true, index: 1, reason: 'terminal-punctuation-normalized' }
+  );
+
+  // 兩邊都沒有句號時走一般 exact，不會被這層新邏輯影響既有行為
+  assert.deepEqual(
+    resolveOptionMatch(['未戴安全帽'], '未戴安全帽', {}),
+    { matched: true, index: 0, reason: 'exact' }
+  );
+
+  // 去除句號後仍然對不上：維持 not-found
+  assert.deepEqual(
+    resolveOptionMatch(options, '未依規定使用安全帶', { fuzzyAllowed: false }),
+    { matched: false, reason: 'not-found' }
+  );
+}
+
 // resolveCandidateGroupMatch（票券 03：桃園違規事項候選元素群組 chose_type→chosen1/chosen2）：
 // 依序跟每個候選群組的選項清單比對，第一個命中的群組就是答案；都沒命中則回傳 matched:false。
 {
