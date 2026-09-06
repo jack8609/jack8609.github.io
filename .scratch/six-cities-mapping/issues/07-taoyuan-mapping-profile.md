@@ -6,7 +6,7 @@
 
 **注意事項（前置條件）：** 桃園跟臺北市一樣有「填欄位前」的身分驗證閘門，需使用者先手動填檢舉人資料＋完成信箱驗證才會顯示違規欄位。AI 不可自行 reload/navigate 使用者的桃園分頁，一律等使用者手動完成驗證並告知後才在該分頁上操作。
 
-**Status:** engine+profile done, awaiting user live verification
+**Status:** done
 
 ## 2026-09-07 動工前重新確認實際欄位格式後的設計更正
 
@@ -29,11 +29,11 @@
 
 ## 驗收標準
 
-- [x] 對應模式綁定桃園網站 date（`#cardate`，plain）、time（`#carTime`，plain）、plate（`CarNum`/`CarNum2` 兩段式，需自行拆分邏輯）、location（`city`/`village`=select 連動、`selectize_Road`=custom 連動、`addStreet`/`addAlley`/`addLane`/`addSubLane`/`addNo`=plain 門牌片段）。—— 已用 `extension/profiles/taoyuan-mapping-profile-issue07.json` 完成（`addStreet` 明確不綁定，見上方設計更正第 2 點），**尚待使用者在瀏覽器裡實際匯入並測試**。
-- [ ] `city`=「其他」時的分支（收合成 `shouhou2` 單一 remainder textarea）也要能正確處理。—— profile 已綁定 `shouhou2` 為 `remainder` role（兩分支都填，見設計更正第 4 點），**尚待使用者實測兩種分支**。
+- [x] 對應模式綁定桃園網站 date（`#cardate`，plain）、time（`#carTime`，plain）、plate（`CarNum`/`CarNum2` 兩段式，需自行拆分邏輯）、location（`city`/`village`=select 連動、`selectize_Road`=custom 連動、`addStreet`/`addAlley`/`addLane`/`addSubLane`/`addNo`=plain 門牌片段）。—— 已用 `extension/profiles/taoyuan-mapping-profile-issue07.json` 完成（`addStreet` 明確不綁定，見上方設計更正第 2 點），使用者已在瀏覽器裡實際匯入並測試通過。
+- [x] `city`=「其他」時的分支（收合成 `shouhou2` 單一 remainder textarea）也要能正確處理。—— profile 已綁定 `shouhou2` 為 `remainder` role（兩分支都填，見設計更正第 4 點），使用者已實測兩種分支通過。
 - [x] `description` 若對應到 `case_note`，需在票券內註記這是條件式欄位（只有選到「其他」違規時才出現），並記錄這個已知限制。—— 已綁定 `#case_note`，條件式顯示限制如上。
 - [x] `violation`、`evidenceImages` 明確不綁定，過渡期由使用者手動處理，profile 或票券文件中清楚註記原因（分別等票 03、01）。—— profile 的 `fieldOrder`/`fields` 未包含這兩個邏輯欄位。
-- [ ] 使用者已在已通過驗證的桃園分頁上完整跑過一次自動填表（測試假資料），確認除 violation/附件外欄位皆正確填入。
+- [x] 使用者已在已通過驗證的桃園分頁上完整跑過一次自動填表（測試假資料），確認除 violation/附件外欄位皆正確填入。—— 使用者已回報驗證完成。
 - [x] 既有 extension contract test 全綠。
 
 ## 需要使用者手動驗收的項目
@@ -49,9 +49,10 @@
 
 ## 交給下一輪的起手 prompt
 
-> 本輪（2026-09-07）已完成票券 07 的引擎擴充部分並準備好可直接匯入的 profile JSON（`extension/profiles/taoyuan-mapping-profile-issue07.json`），核心變更：
+> 票券 07（桃園 mapping profile，除 violation/evidenceImages 外）已完成並經使用者在真實瀏覽器驗證通過（2026-09-07）。核心變更：
 > - `lib/address-parser.js`／`lib/schema.js`／`lib/fill-engine.js`／`content/fill-mode.js`／`content/mapping-mode.js` 新增 6 個地址角色（`city`/`alley`/`lane`/`subLane`/`houseNumber`/`subNumber`），讓桃園這類把地址拆成多個獨立輸入框的網站可以精確自動填值（不影響臺北/臺中既有 profile，`remainder` 語意不變）。
+> - 可直接匯入的 profile JSON：`extension/profiles/taoyuan-mapping-profile-issue07.json`。
 > - 9 個 extension contract test 全綠。
-> - 發現 `selectize_Road`（路名）用 selectize.js 元件，跟既有 `custom` kind 的 Vuetify 專用互動邏輯不相容，已另開票券 14（`.scratch/six-cities-mapping/issues/14-selectize-dropdown-interaction.md`）處理，本票的 profile 已把 `road` 先綁定成 `custom`（forward-compatible，票 14 完成後不需要重新綁定），但目前 `road` 欄位永遠不會自動選取，等同手動欄位。
+> - 發現 `selectize_Road`（路名）用 selectize.js 元件，跟既有 `custom` kind 的 Vuetify 專用互動邏輯不相容，已另開票券 14（`.scratch/six-cities-mapping/issues/14-selectize-dropdown-interaction.md`）處理，`road` 欄位目前仍是手動確認，非本票範圍。
 >
-> **尚未完成**：使用者需要 1) 用擴充功能 popup 的「匯入」功能匯入上述 JSON、2) 在已通過驗證的桃園分頁上實際測試自動填表（見「需要使用者手動驗收的項目」）。下一輪如果是接續本票，直接請使用者完成上述驗收並回報結果、視結果決定是否要修正 profile 或標記本票 done 即可，不需要重新讀本票以外的背景文件；如果要改接其他票券，可讀 `.scratch/six-cities-mapping/spec.md` 挑票券 08（高雄 mapping profile）、票 06（臺南 mapping profile，尚未開始）或票 14（selectize.js 互動模組），彼此互相獨立無阻塞。
+> 下一輪可接票券 08（高雄 mapping profile）、票 06（臺南 mapping profile，尚未開始）或票 14（selectize.js 互動模組），彼此互相獨立無阻塞。開始前請讀 `.scratch/six-cities-mapping/spec.md` 與對應票券檔案。
