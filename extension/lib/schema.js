@@ -17,12 +17,24 @@ const FIELD_KINDS = ['plain', 'select', 'custom', 'file', 'file-trigger', 'file-
 // 巷/弄/号，語意上無法從單一字串可靠拆分）一律視為無法自動判斷，只能標記待確認，不猜測填值。
 // 只在 location 欄位使用；其他欄位的多個 selector item 沿用既有的位置對應慣例（例如車牌固定是
 // [左碼, 右碼]），不需要 role。
-export const LOCATION_ROLES = ['district', 'road', 'remainder'];
+// 票券 07（桃園 mapping profile）新增：
+// - city：桃園網站的地址是兩層行政區劃（city=縣市選單只有「請選擇/桃園市/其他」，village=
+//   實際 13 個行政區），現有 'district' role 只對應到 parseTaiwanAddress 的 district（區級），無法同時
+//   滿足兩個 select，所以新增 city role 對應 parsed.city（縣市），與 district 分開獨立。
+// - alley/lane/subLane/houseNumber/subNumber：供桃園這類把巷/弄/衖/號/之拆成各自獨立輸入框的網站
+//   使用，對應 lib/address-parser.js 從 remainder 再解析出的同名片段。
+// remainder 仍保留給只有單一「其餘地址」欄位的網站（臺北/臺中既有 profile 不受影響）。
+export const LOCATION_ROLES = [
+  'city', 'district', 'road', 'remainder', 'alley', 'lane', 'subLane', 'houseNumber', 'subNumber'
+];
 
 // 對應模式面板（短版，逐子元素顯示用）與角色選擇 modal（長版，含例子的說明文字，見
 // mapping-mode.js 的 showLocationRoleModal()）都需要同一組 role 顯示名稱，集中放這裡
 // 避免像 FIELD_LABELS 那樣各自維護出分岔。
-export const LOCATION_ROLE_LABELS = { district: '行政區', road: '路名', remainder: '其餘' };
+export const LOCATION_ROLE_LABELS = {
+  city: '縣市', district: '行政區', road: '路名', remainder: '其餘',
+  alley: '巷', lane: '弄', subLane: '衖', houseNumber: '號', subNumber: '之'
+};
 
 // 票券 02 新增：evidenceImages 的 selector item 可選標記 role，供高雄這類「選檔後還要再按一次
 // 獨立『上傳』按鈕才會生效」的網站，額外綁定那顆確認鈕。跟 LOCATION_ROLES 是各自獨立的列舉，

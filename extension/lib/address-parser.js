@@ -13,9 +13,27 @@ const SEGMENT_NUMERAL_CHARS = '一二三四五六七八九十0-9';
 // 一起被抓進 road，不能只抓到「文化路」把「1段」漏給 remainder（見使用者回報的真實案例）。
 const ROAD_PATTERN = new RegExp(`^[\u4e00-\u9fff0-9]{1,12}?(?:路|街|大道)(?:[${SEGMENT_NUMERAL_CHARS}]+段)?`);
 
+// 票券 07（桃園 mapping profile）新增：remainder（路名後面剩下的完整字串）本身維持不變
+// （回溯相容既有只綁 remainder 的臺北/臺中 profile，見 spec.md 討論），這裡額外從 remainder
+// 再解析出巷/弄/衖/號/之五個純數字片段，供桃園這類把地址拆成獨立輸入框的網站使用。每個片段
+// 都只取數字本身，不含「巷」「弄」等單位字——目標欄位本身通常已經有對應的文字標籤
+// （例如「巷」），填入「20巷」而非「20」會造成重複/錯誤（使用者實測回報）。臺灣地址慣例「之」
+// 是接在「號」後面（例如「100號之3」），不是「之號」，所以跟 houseNumber 用同一個 pattern
+// 一起解析，避免兩個獨立 pattern 對「之」的位置各自猜測而生歧義。解不出來的片段一律回空字串，
+// 不猜測（見 lib/fill-engine.js 的對應 role 分支與 PLAN.md 核心原則）。
+const ALLEY_PATTERN = /(\d+)巷/;
+const LANE_PATTERN = /(\d+)弄/;
+const SUBLANE_PATTERN = /(\d+)衖/;
+const HOUSE_NUMBER_PATTERN = /(\d+)號(?:之(\d+))?/;
+
+const EMPTY_ADDRESS = {
+  city: '', district: '', road: '', remainder: '',
+  alley: '', lane: '', subLane: '', houseNumber: '', subNumber: ''
+};
+
 export function parseTaiwanAddress(raw) {
   let rest = String(raw ?? '').trim();
-  if (!rest) return { city: '', district: '', road: '', remainder: '' };
+  if (!rest) return { ...EMPTY_ADDRESS };
 
   const cityMatch = rest.match(CITY_PATTERN);
   const city = cityMatch ? cityMatch[0] : '';
@@ -29,7 +47,19 @@ export function parseTaiwanAddress(raw) {
   const road = roadMatch ? roadMatch[0] : '';
   rest = rest.slice(road.length);
 
-  return { city, district, road, remainder: rest };
+  const alleyMatch = rest.match(ALLEY_PATTERN);
+  const laneMatch = rest.match(LANE_PATTERN);
+  const subLaneMatch = rest.match(SUBLANE_PATTERN);
+  const houseNumberMatch = rest.match(HOUSE_NUMBER_PATTERN);
+
+  return {
+    city, district, road, remainder: rest,
+    alley: alleyMatch ? alleyMatch[1] : '',
+    lane: laneMatch ? laneMatch[1] : '',
+    subLane: subLaneMatch ? subLaneMatch[1] : '',
+    houseNumber: houseNumberMatch ? houseNumberMatch[1] : '',
+    subNumber: (houseNumberMatch && houseNumberMatch[2]) ? houseNumberMatch[2] : ''
+  };
 }
 
 const CHINESE_DIGITS = { 零: 0, 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };

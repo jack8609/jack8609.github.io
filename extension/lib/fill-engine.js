@@ -115,6 +115,9 @@ export function applyDateTransform(isoDate, transform) {
 
 function buildLocationItemPlan(item, sourceData) {
   const parsed = parseTaiwanAddress(sourceData.address);
+  if (item.role === 'city') {
+    return parsed.city ? { item, targetValue: parsed.city } : { item, skipReason: 'address-missing-city' };
+  }
   if (item.role === 'district') {
     return parsed.district ? { item, targetValue: parsed.district } : { item, skipReason: 'address-missing-district' };
   }
@@ -124,7 +127,24 @@ function buildLocationItemPlan(item, sourceData) {
   if (item.role === 'remainder') {
     return parsed.remainder ? { item, targetValue: parsed.remainder } : { item, skipReason: 'address-missing-remainder' };
   }
-  // 沒有標角色的 item（例如台北市公里/巷/弄/号——無法從單一地址字串可靠拆分，見 PLAN.md P2 討論）：
+  // 票券 07（桃園 mapping profile）新增：巷/弄/衖/號/之各自獨立輸入框的網站，各自從
+  // lib/address-parser.js 解析出的同名純數字片段取值，解不出來就 skip，不猜測填空字串。
+  if (item.role === 'alley') {
+    return parsed.alley ? { item, targetValue: parsed.alley } : { item, skipReason: 'address-missing-alley' };
+  }
+  if (item.role === 'lane') {
+    return parsed.lane ? { item, targetValue: parsed.lane } : { item, skipReason: 'address-missing-lane' };
+  }
+  if (item.role === 'subLane') {
+    return parsed.subLane ? { item, targetValue: parsed.subLane } : { item, skipReason: 'address-missing-sublane' };
+  }
+  if (item.role === 'houseNumber') {
+    return parsed.houseNumber ? { item, targetValue: parsed.houseNumber } : { item, skipReason: 'address-missing-housenumber' };
+  }
+  if (item.role === 'subNumber') {
+    return parsed.subNumber ? { item, targetValue: parsed.subNumber } : { item, skipReason: 'address-missing-subnumber' };
+  }
+  // 沒有標角色的 item（例如台北市公里——無法從單一地址字串可靠拆分，見 PLAN.md P2 討論）：
   // 一律不猜測，交給使用者手動確認。
   return { item, skipReason: 'unassigned-role' };
 }

@@ -91,4 +91,5 @@
 - 桃園、臺北比照辦理「AI 不自動 reload/navigate 使用者的分頁，等使用者手動完成身分驗證後才操作」的規則。
 - 引擎擴充 1~4 彼此獨立，只共用同一批核心檔案（`schema.js`/`mapping-mode.js`/`evidence-upload.js`/`fill-engine.js`），建議依序（而非同時）合併進 main，避免多輪平行修改同一檔案造成衝突；若真的要平行進行，實作者要在動工前先看一次該檔案當時的最新狀態。
 - 詳細技術依據見 `.scratch/six-cities-survey/SUMMARY.md`（落差 1~5）與 `taoyuan.md`/`kaohsiung.md` 的 2026-08-24 更新段落。
-- 若需使用 `chrome-devtools*` mcp, 請委派 `sub agent`工作, 主context只收結果, 避免過多測試與分析噪音汙染.
+- 若需使用 `chrome-devtools*` mcp, 執行長時間或重複多輪調查或測試工作請委派 `sub agent`, 主context只收結果, 避免過多測試與分析噪音汙染, 若只是簡單的點擊、滾動看畫面等基礎操作則不需要委派 `sub agent`,請先判斷複雜度後再考慮是否委派.
+- 當前的 `chrome-devtools*` mcp 設定`無法操作插件`請勿盲目嘗試.

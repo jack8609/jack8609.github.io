@@ -209,6 +209,60 @@ const { resolveOptionMatch, applyDateTransform, buildFillPlan, resolveCandidateG
   assert.equal(noAddressLocation.items[0].skipReason, 'address-missing-district');
   assert.equal(noAddressLocation.items[1].skipReason, 'address-missing-road');
 
+  // 票券 07（桃園 mapping profile）：alley/lane/subLane/houseNumber/subNumber 各自獨立輸入框
+  // 各自拿到 lib/address-parser.js 解出的同名純數字片段，解不出來要 skip 並帶對應的 skipReason。
+  {
+    const fineGrainedProfile = {
+      fieldOrder: ['location'],
+      fields: {
+        location: {
+          riskField: false,
+          selector: [
+            { kind: 'plain', value: '#alley', role: 'alley' },
+            { kind: 'plain', value: '#lane', role: 'lane' },
+            { kind: 'plain', value: '#subLane', role: 'subLane' },
+            { kind: 'plain', value: '#houseNumber', role: 'houseNumber' },
+            { kind: 'plain', value: '#subNumber', role: 'subNumber' }
+          ]
+        }
+      }
+    };
+    const filledPlan = buildFillPlan(
+      { address: '南投縣埔里鎮中山路三段5巷6弄7衖8號之9' }, fineGrainedProfile
+    );
+    const [alley, lane, subLane, houseNumber, subNumber] = filledPlan[0].items;
+    assert.equal(alley.targetValue, '5');
+    assert.equal(lane.targetValue, '6');
+    assert.equal(subLane.targetValue, '7');
+    assert.equal(houseNumber.targetValue, '8');
+    assert.equal(subNumber.targetValue, '9');
+
+    // 地址沒有巷/弄/衖/之時（只有單純號），這幾個角色都要 skip，不猜測填空字串
+    const sparseFinePlan = buildFillPlan(
+      { address: '南投縣埔里鎮中山路三段8號' }, fineGrainedProfile
+    );
+    const [sparseAlley, sparseLane, sparseSubLane, sparseHouseNumber, sparseSubNumber] = sparseFinePlan[0].items;
+    assert.equal(sparseAlley.skipReason, 'address-missing-alley');
+    assert.equal(sparseLane.skipReason, 'address-missing-lane');
+    assert.equal(sparseSubLane.skipReason, 'address-missing-sublane');
+    assert.equal(sparseHouseNumber.targetValue, '8');
+    assert.equal(sparseSubNumber.skipReason, 'address-missing-subnumber');
+  }
+
+  // 票券 07（桃園 mapping profile）：city role 對應 parsed.city（縣市），跟 district（區級）分開，
+  // 供桃園「city（縣市選單）+village（行政區選單）」兩層結構使用。
+  {
+    const cityProfile = {
+      fieldOrder: ['location'],
+      fields: { location: { riskField: false, selector: [{ kind: 'select', value: '#city', role: 'city' }] } }
+    };
+    const cityPlan = buildFillPlan({ address: '桃園市中壢區中正路100號' }, cityProfile);
+    assert.equal(cityPlan[0].items[0].targetValue, '桃園市');
+
+    const noCityPlan = buildFillPlan({ address: '不是地址的字串' }, cityProfile);
+    assert.equal(noCityPlan[0].items[0].skipReason, 'address-missing-city');
+  }
+
   // kind: file 一律 skip（附件上傳這個階段不會自動處理）
   const fileProfile = {
     fieldOrder: ['evidenceImages'],

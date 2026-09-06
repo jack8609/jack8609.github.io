@@ -625,9 +625,15 @@
   // 其餘一律標記待確認（不猜測拆分，見 lib/address-parser.js 與 lib/fill-engine.js 的註解）。
   function showLocationRoleModal() {
     const roleExamples = {
+      city: '（例如「新北市」「桃園市」）',
       district: '（例如「板橋區」「中山區」）',
       road: '（含幾段，例如「文化路一段」）',
-      remainder: '（門牌號等，路名後面剩下的文字）'
+      remainder: '（門牌號等，路名後面剩下的文字）',
+      alley: '（巷弄門牌的「巷」，只填數字，例如「20」）',
+      lane: '（巷弄門牌的「弄」，只填數字，例如「6」）',
+      subLane: '（巷弄門牌的「衖」，只填數字，較少見）',
+      houseNumber: '（門牌「號」，只填數字，例如「100」）',
+      subNumber: '（門牌「之」，只填數字，例如「3」）'
     };
     const roleLabels = Object.fromEntries(
       LOCATION_ROLES.map((value) => [value, `${LOCATION_ROLE_LABELS[value] || value}${roleExamples[value] || ''}`])

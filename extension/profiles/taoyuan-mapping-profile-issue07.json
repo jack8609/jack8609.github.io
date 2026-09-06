@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "exportedAt": "2026-09-07T00:00:00.000Z",
+  "profiles": {
+    "tvrweb_typd_gov_tw": {
+      "siteId": "tvrweb_typd_gov_tw",
+      "displayName": "桃園市政府警察局交通違規檢舉專區",
+      "matchPatterns": [
+        "https://tvrweb.typd.gov.tw/*"
+      ],
+      "fieldOrder": [
+        "plate",
+        "date",
+        "time",
+        "location",
+        "description"
+      ],
+      "fields": {
+        "plate": {
+          "riskField": false,
+          "selector": [
+            { "kind": "plain", "value": "#CarNum" },
+            { "kind": "plain", "value": "#CarNum2" }
+          ]
+        },
+        "date": {
+          "riskField": false,
+          "selector": [
+            { "kind": "plain", "value": "#cardate" }
+          ]
+        },
+        "time": {
+          "riskField": false,
+          "selector": [
+            { "kind": "plain", "value": "#carTime" }
+          ]
+        },
+        "location": {
+          "riskField": true,
+          "selector": [
+            { "kind": "select", "value": "#city", "role": "city" },
+            { "kind": "select", "value": "#village", "role": "district" },
+            { "kind": "custom", "value": "#selectize_Road-selectized", "role": "road" },
+            { "kind": "plain", "value": "#addAlley", "role": "alley" },
+            { "kind": "plain", "value": "#addLane", "role": "lane" },
+            { "kind": "plain", "value": "#addSubLane", "role": "subLane" },
+            { "kind": "plain", "value": "#addNo", "role": "houseNumber" },
+            { "kind": "plain", "value": "#shouhou2", "role": "remainder" }
+          ]
+        },
+        "description": {
+          "riskField": false,
+          "selector": [
+            { "kind": "plain", "value": "#case_note" }
+          ]
+        }
+      }
+    }
+  }
+}

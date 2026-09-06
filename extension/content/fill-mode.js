@@ -177,7 +177,12 @@
 
   // location 欄位的子元素要照「行政區→路名→其餘地址片段」的語意順序處理（路名的選項通常
   // 依賴行政區已選定），跟錄製時的綁定順序無關；沒有標角色的 item 排最後，反正一律待確認。
-  const LOCATION_ROLE_PRIORITY = { district: 0, road: 1, remainder: 2 };
+  // 票券 07（桃園 mapping profile）新增：alley/lane/subLane/houseNumber/subNumber 都是各自
+  // 獨立、互不依賴的純數字輸入框，填入順序理論上不影響結果，這裡沿用「行政區→路名→其餘片段」
+  // 的邏輯順序排在 road 之後、remainder 之前即可，不需要更精細的排序。
+  const LOCATION_ROLE_PRIORITY = {
+    city: 0, district: 1, road: 2, alley: 3, lane: 4, subLane: 5, houseNumber: 6, subNumber: 7, remainder: 8
+  };
   function orderFieldItems(fieldName, items) {
     if (fieldName !== 'location') return items;
     return [...items].sort((a, b) => {
@@ -191,9 +196,15 @@
     switch (reason) {
       case 'no-source-value': return '來源網站沒有這個欄位的資料，需要手動填寫';
       case 'unsupported-kind': return '附件上傳這個階段不會自動處理，請手動上傳';
+      case 'address-missing-city': return '地址字串解析不出縣市，請手動選擇';
       case 'address-missing-district': return '地址字串解析不出行政區，請手動選擇';
       case 'address-missing-road': return '地址字串解析不出路名，請手動確認或選擇';
       case 'address-missing-remainder': return '地址字串沒有路名後面的其餘內容，請手動填寫';
+      case 'address-missing-alley': return '地址字串解析不出「巷」，請手動填寫';
+      case 'address-missing-lane': return '地址字串解析不出「弄」，請手動填寫';
+      case 'address-missing-sublane': return '地址字串解析不出「衖」，請手動填寫';
+      case 'address-missing-housenumber': return '地址字串解析不出「號」，請手動填寫';
+      case 'address-missing-subnumber': return '地址字串解析不出「之」，請手動填寫';
       case 'unassigned-role': return '這個子元素沒有標記地址角色，不會自動處理，請手動填寫';
       default: return '無法自動處理，請手動確認';
     }
