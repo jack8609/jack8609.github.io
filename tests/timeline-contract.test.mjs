@@ -70,8 +70,8 @@ endRange.value = 50;
 listeners['startRange:input']();
 assert.equal(endRange.value, 80);
 assert.equal(preview.currentTime, 80);
-assert.equal(dom.startLabel.textContent, '開始：fmt:80');
-assert.equal(dom.endLabel.textContent, '結束：fmt:80');
+assert.equal(dom.startLabel.textContent, 'fmt:80');
+assert.equal(dom.endLabel.textContent, 'fmt:80');
 assert.deepEqual(selectionEl.style, { left: '160px', width: '0px' });
 
 listeners['window:resize']();

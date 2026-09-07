@@ -83,7 +83,7 @@ assert.deepEqual([dom.btnClip.disabled, dom.btnDownloadFull.disabled, dom.btnThu
 utils.resetClipUI(12.5);
 assert.deepEqual([dom.startRange.min, dom.startRange.max, dom.startRange.value], [0, 12.5, 0]);
 assert.deepEqual([dom.endRange.min, dom.endRange.max, dom.endRange.value], [0, 12.5, 12.5]);
-assert.deepEqual([dom.startLabel.textContent, dom.endLabel.textContent], ['開始：00:00:00.00', '結束：00:00:12.50']);
+assert.deepEqual([dom.startLabel.textContent, dom.endLabel.textContent], ['00:00:00.00', '00:00:12.50']);
 assert.equal(calls.selectionUpdates, 2);
 
 utils.revokeURL('blob:old');
