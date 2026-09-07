@@ -117,6 +117,8 @@
   }
 
   function renderPanel() {
+    const previousBody = panel.querySelector('.vh-mapping-body');
+    const previousScrollTop = previousBody ? previousBody.scrollTop : 0;
     panel.innerHTML = '';
 
     const title = document.createElement('div');
@@ -290,6 +292,8 @@
               : `請在頁面上點選「${targetLabel}」對應的欄位（按 Esc 取消）`;
       body.appendChild(hint);
     }
+
+    body.scrollTop = previousScrollTop;
   }
 
   function startPicking(fieldName, append, role) {
