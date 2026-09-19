@@ -27,13 +27,13 @@
         "date": {
           "riskField": false,
           "selector": [
-            { "kind": "plain", "value": "#cardate" }
+            { "kind": "plain", "value": "#cardate", "transform": "westernSlash" }
           ]
         },
         "time": {
           "riskField": false,
           "selector": [
-            { "kind": "plain", "value": "#carTime" }
+            { "kind": "plain", "value": "#carTime", "transform": "colonSeparated" }
           ]
         },
         "location": {

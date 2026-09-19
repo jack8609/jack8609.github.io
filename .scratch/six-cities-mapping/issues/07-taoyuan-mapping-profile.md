@@ -8,6 +8,10 @@
 
 **Status:** done
 
+## 2026-09-19 補記（票 10 驗收時發現並修正的 date/time 格式 bug）
+
+票 10（violation 綁定）用真實瀏覽器驗收時，使用者回報桃園的日期/時間欄位格式不對。實測確認：`#cardate` 需要 `yyyy/MM/dd`（西元年、斜線）、`#carTime` 需要 `HH:mm`（冒號），但本票原本的 profile 沒有套用 transform，分別填入了 ISO `yyyy-MM-dd` 與臺中（票 05）專用的無分隔符 `HHmm`，兩者都不符合桃園站方格式。已在 `extension/lib/fill-engine.js` 新增 `westernSlash`（date）／`colonSeparated`（time）兩個 transform，並套用到本票的 profile JSON。詳見 `10-taoyuan-violation-binding.md` 的對應段落與 contract test。
+
 ## 2026-09-07 動工前重新確認實際欄位格式後的設計更正
 
 原文只提到「location 已結構化」，實際動工時發現以下落差，已對齊使用者並完成引擎擴充：

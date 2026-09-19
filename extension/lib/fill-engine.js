@@ -95,20 +95,23 @@ export function buildDateTimeMergeValue(sourceData) {
   return `${date} ${paddedHour}:${paddedMinute}`;
 }
 
-// 支援三種西元轉民國格式（見對應模式錄製時的 promptDateTransform 四選一）：
+// 支援四種日期格式（見對應模式錄製時的 promptDateTransform 選項）：
 // 'westernToMinguo' → 斜線格式（115/08/17，月/日補零）；
 // 'westernToMinguoChinese' → 中文全形格式（115 年 8 月 17 日，台北市違規日期需要，月/日不補零）；
-// 'westernToMinguoCompact' → 無分隔符緊湊數字（1150817，月/日補零，臺中違規日期需要，見票券 05）。
+// 'westernToMinguoCompact' → 無分隔符緊湊數字（1150817，月/日補零，臺中違規日期需要，見票券 05）；
+// 'westernSlash' → 西元年斜線格式（2026/09/19，月/日補零，桃園違規日期 My97 DatePicker 需要
+// 的 yyyy/MM/dd，年份不轉民國，見 .scratch/six-cities-survey/taoyuan.md 與票券 10 驗收時發現的落差）。
 export function applyDateTransform(isoDate, transform) {
   if (!isoDate) return '';
-  const knownTransforms = ['westernToMinguo', 'westernToMinguoChinese', 'westernToMinguoCompact'];
+  const knownTransforms = ['westernToMinguo', 'westernToMinguoChinese', 'westernToMinguoCompact', 'westernSlash'];
   if (!knownTransforms.includes(transform)) return isoDate;
   const [year, month, day] = isoDate.split('-').map(Number);
   if (!year || !month || !day) return isoDate;
-  const minguoYear = year - MINGUO_OFFSET;
-  if (transform === 'westernToMinguoChinese') return `${minguoYear} 年 ${month} 月 ${day} 日`;
   const paddedMonth = String(month).padStart(2, '0');
   const paddedDay = String(day).padStart(2, '0');
+  if (transform === 'westernSlash') return `${year}/${paddedMonth}/${paddedDay}`;
+  const minguoYear = year - MINGUO_OFFSET;
+  if (transform === 'westernToMinguoChinese') return `${minguoYear} 年 ${month} 月 ${day} 日`;
   if (transform === 'westernToMinguoCompact') return `${minguoYear}${paddedMonth}${paddedDay}`;
   return `${minguoYear}/${paddedMonth}/${paddedDay}`;
 }
@@ -186,9 +189,16 @@ function buildItemPlan(fieldName, item, index, sourceData, itemCount) {
   let value;
   if (fieldName === 'plate') value = sourceData.plate ? sourceData.plate[index] : undefined;
   else if (fieldName === 'time') {
-    // 臺中（票券 05）時間欄位是單一輸入框、需要 hour+minute 合併成 'HHmm'；臺北/新北是時/分
+    // 臺中（票券 05）時間欄位是單一輸入框、需要 hour+minute 合併成 'HHmm'；桃園（票券 10 驗收時
+    // 發現的落差）同樣是單一輸入框，但站方 My97 DatePicker 需要 'HH:mm' 冒號分隔格式，不是無分隔符
+    // 緊湊數字——用 item.transform === 'colonSeparated' 分流，沒有標記 transform 時維持既有的
+    // 'HHmm' 預設行為（回溯相容臺中既有 profile，不需要改它的 profile JSON）。臺北/新北是時/分
     // 各自獨立元素，維持既有的位置對應（index 0 = hour, index 1 = minute）。
-    if (itemCount === 1) value = (sourceData.hour && sourceData.minute) ? `${sourceData.hour}${sourceData.minute}` : undefined;
+    if (itemCount === 1) {
+      value = (sourceData.hour && sourceData.minute)
+        ? (item.transform === 'colonSeparated' ? `${sourceData.hour}:${sourceData.minute}` : `${sourceData.hour}${sourceData.minute}`)
+        : undefined;
+    }
     else value = index === 0 ? sourceData.hour : sourceData.minute;
   }
   else if (fieldName === 'violation') value = sourceData.violationText;

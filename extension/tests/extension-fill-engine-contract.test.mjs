@@ -132,6 +132,14 @@ const { resolveOptionMatch, applyDateTransform, buildFillPlan, resolveCandidateG
   assert.equal(applyDateTransform('2026-01-05', 'westernToMinguoCompact'), '1150105', '月/日要補零，跟中文全形格式不同');
   assert.equal(applyDateTransform('', 'westernToMinguoCompact'), '');
   assert.equal(applyDateTransform(null, 'westernToMinguoCompact'), '');
+
+  // westernSlash（票券 10 驗收時發現的桃園違規日期格式 bug 修正：#cardate 是西元年 yyyy/MM/dd，
+  // 不是民國年，之前沒有對應的 transform，plain 賦值直接寫入了 ISO 格式 'yyyy-MM-dd' 導致站方
+  // My97 DatePicker 認不得，見 .scratch/six-cities-survey/taoyuan.md 第 18 行）
+  assert.equal(applyDateTransform('2026-09-19', 'westernSlash'), '2026/09/19');
+  assert.equal(applyDateTransform('2026-01-05', 'westernSlash'), '2026/01/05', '月/日要補零');
+  assert.equal(applyDateTransform('', 'westernSlash'), '');
+  assert.equal(applyDateTransform(null, 'westernSlash'), '');
 }
 
 // buildFillPlan：純資料整形，不碰 DOM。給定 profile + 來源資料，決定每個 selector item 該填什麼值，
@@ -327,6 +335,19 @@ const { resolveOptionMatch, applyDateTransform, buildFillPlan, resolveCandidateG
   assert.equal(singleTimeMissingMinute[0].items[0].skipReason, 'no-source-value');
   const singleTimeMissingHour = buildFillPlan({ ...sourceData, hour: '' }, singleTimeProfile);
   assert.equal(singleTimeMissingHour[0].items[0].skipReason, 'no-source-value');
+
+  // item.transform === 'colonSeparated'（票券 10 驗收時發現的桃園違規時間格式 bug 修正：
+  // #carTime 是單一輸入框但站方 My97 DatePicker 要求 'HH:mm'，不是臺中那種無分隔符 'HHmm'，
+  // 見 .scratch/six-cities-survey/taoyuan.md 第 21 行）——沒有標記 transform 時維持既有 'HHmm'
+  // 預設行為，不影響臺中既有 profile。
+  const colonTimeProfile = {
+    fieldOrder: ['time'],
+    fields: { time: { riskField: false, selector: [{ kind: 'plain', value: '#carTime', transform: 'colonSeparated' }] } }
+  };
+  const colonTimePlan = buildFillPlan(sourceData, colonTimeProfile);
+  assert.equal(colonTimePlan[0].items[0].targetValue, '13:05');
+  const colonTimeMissingMinute = buildFillPlan({ ...sourceData, minute: '' }, colonTimeProfile);
+  assert.equal(colonTimeMissingMinute[0].items[0].skipReason, 'no-source-value');
 
   // violation 欄位的候選群組控制型 select（role: 'candidate-controller'）與候選 select
   // （role: 'candidate'，票券 03）一律 skip（'candidate-group-pending'）——這兩種 item 走
