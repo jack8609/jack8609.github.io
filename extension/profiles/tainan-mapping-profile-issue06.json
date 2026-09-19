@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "exportedAt": "2026-09-19T00:00:00.000Z",
+  "profiles": {
+    "tr_tnpd_gov_tw": {
+      "siteId": "tr_tnpd_gov_tw",
+      "displayName": "交通檢舉信箱-臺南市政府警察局全球資訊網",
+      "matchPatterns": [
+        "https://tr.tnpd.gov.tw/*"
+      ],
+      "fieldOrder": [
+        "plate",
+        "date",
+        "time",
+        "location",
+        "violation",
+        "description"
+      ],
+      "fields": {
+        "plate": {
+          "riskField": false,
+          "selector": [
+            { "kind": "plain", "value": "#violation_carno1" },
+            { "kind": "plain", "value": "#violation_carno2" }
+          ]
+        },
+        "date": {
+          "riskField": true,
+          "selector": [
+            { "kind": "select", "value": "#violation_date", "transform": "westernSlash" }
+          ]
+        },
+        "time": {
+          "riskField": true,
+          "selector": [
+            { "kind": "select", "value": "#violation_time1" },
+            { "kind": "select", "value": "#violation_time2" }
+          ]
+        },
+        "location": {
+          "riskField": true,
+          "selector": [
+            { "kind": "select", "value": "#violation_place_area", "role": "district" },
+            { "kind": "custom", "value": "#violation_place_road_search", "role": "road" },
+            { "kind": "plain", "value": "#violation_place", "role": "remainder" }
+          ]
+        },
+        "violation": {
+          "riskField": true,
+          "selector": [
+            { "kind": "select", "value": "#itemno" }
+          ]
+        },
+        "description": {
+          "riskField": false,
+          "selector": [
+            { "kind": "plain", "value": "#Subject" }
+          ]
+        }
+      }
+    }
+  }
+}
