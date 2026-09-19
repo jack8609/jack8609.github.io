@@ -76,4 +76,4 @@
 >
 > **下一步建議接哪張票：** 桃園整組工作（07/03/10）現在全部完成，可接票 09（臺南附件綁定）、11（桃園附件綁定）、12（高雄附件綁定）、13（高雄 date/time 綁定，可參考本票發現的 date/time transform 模式）或 14（selectize.js 互動模組）之一，彼此互相獨立。若發現高雄 date/time 也有類似的單一欄位格式不對問題，可直接套用本票新增的 `westernSlash`/`colonSeparated` transform。
 >
-> **需要讀哪些背景文件：** `.scratch/six-cities-mapping/spec.md`、本票券檔案、票 03（`03-taoyuan-violation-candidate-group.md`）、票 07（`07-taoyuan-mapping-profile.md`）、`.scratch/six-cities-survey/taoyuan.md`（第 15-21 行 date/time DOM 細節、第 50 行 `chose_type` 選項文字）。
+> **需要讀哪些背景文件：** `.scratch/six-cities-mapping/spec.md`、本票券檔案、票 03（`03-taoyuan-violation-candidate-group.md`）、票 07（`07-taoyuan-mapping-profile.md`）、`.scratch/six-cities-survey/taoyuan.md`（第 15-21 行 date/time DOM 細節、第 50 行 `chose_type` 選項文字）、`.scratch/six-cities-mapping/browser-verification-playbook.md`（本票驗收時整理出的 chrome-devtools-mcp 操作手冊，下一輪真實瀏覽器驗收前必讀）。
