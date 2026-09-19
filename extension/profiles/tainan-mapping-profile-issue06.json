@@ -14,7 +14,8 @@
         "time",
         "location",
         "violation",
-        "description"
+        "description",
+        "evidenceImages"
       ],
       "fields": {
         "plate": {
@@ -55,6 +56,17 @@
           "riskField": false,
           "selector": [
             { "kind": "plain", "value": "#Subject" }
+          ]
+        },
+        "evidenceImages": {
+          "riskField": false,
+          "selector": [
+            { "kind": "file-slots", "value": "#Upfile1" },
+            { "kind": "file-slots", "value": "#Upfile2" },
+            { "kind": "file-slots", "value": "#Upfile3" },
+            { "kind": "file-slots", "value": "#Upfile4" },
+            { "kind": "file-slots", "value": "#Upfile5" },
+            { "kind": "file-slots", "value": "#Upfile6" }
           ]
         }
       }
