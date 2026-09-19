@@ -14,13 +14,14 @@
   const sourceData = window.__violationHelperSourceData || null;
   delete window.__violationHelperSourceData;
 
-  const [schemaMod, storageMod, siteMod, fillEngineMod, resolveMod, vuetifyMod, addressParserMod, evidenceUploadMod] = await Promise.all([
+  const [schemaMod, storageMod, siteMod, fillEngineMod, resolveMod, vuetifyMod, selectizeMod, addressParserMod, evidenceUploadMod] = await Promise.all([
     import(chrome.runtime.getURL('lib/schema.js')),
     import(chrome.runtime.getURL('lib/storage.js')),
     import(chrome.runtime.getURL('lib/site.js')),
     import(chrome.runtime.getURL('lib/fill-engine.js')),
     import(chrome.runtime.getURL('content/selector-resolve.js')),
     import(chrome.runtime.getURL('content/vuetify-dropdown-interaction.js')),
+    import(chrome.runtime.getURL('content/selectize-dropdown-interaction.js')),
     import(chrome.runtime.getURL('lib/address-parser.js')),
     import(chrome.runtime.getURL('content/evidence-upload.js'))
   ]);
@@ -28,8 +29,9 @@
   const { createProfileStore } = storageMod;
   const { siteIdFromHostname } = siteMod;
   const { buildFillPlan, resolveOptionMatch, resolveCandidateGroupMatch, normalizeForMatch } = fillEngineMod;
-  const { resolveSelectorItem, setNativeValue, hasVuetifyDropdownWrapper, resolveFileTriggerInput } = resolveMod;
+  const { resolveSelectorItem, setNativeValue, hasVuetifyDropdownWrapper, hasSelectizeDropdownWrapper, resolveFileTriggerInput } = resolveMod;
   const { fillVuetifyDropdown } = vuetifyMod;
+  const { fillSelectizeDropdown } = selectizeMod;
   const { extractRoadNamePrefix } = addressParserMod;
   const { promptForEvidenceFiles, planEvidenceInjection, injectFilesIntoInput, injectFilesIncrementally, injectFilesIntoSlots } = evidenceUploadMod;
 
@@ -262,11 +264,28 @@
     if (!el) return;
 
     const { kind } = itemPlan.item;
+    // 桃園 selectize.js 元件（selectize_Road/selectize_Road2）跟 Vuetify 是完全不同的下拉技術，
+    // 優先偵測，命中就不再落入下面的 Vuetify 判斷（見票券 14）。
+    const isSelectizeDropdownFlow = hasSelectizeDropdownWrapper(el);
+
     // 不論記錄的 kind 是什麼，只要元素本身位於「下拉/自動完成」容器（.v-select/.v-autocomplete）
     // 內，就要跟 kind==='custom' 欄位一樣走點擊式選單流程——賦值＋dispatch 事件在可打字的
     // v-autocomplete/v-combobox 上不可靠，容易出現「畫面看起來有值，但失焦後被清空」的假象
     // （見 spec.md 問題 4/5），路名這類 kind:'plain' 子元素也涵蓋得到，不用逐欄位維護白名單。
-    const isVuetifyDropdownFlow = kind === 'custom' || hasVuetifyDropdownWrapper(el);
+    const isVuetifyDropdownFlow = !isSelectizeDropdownFlow && (kind === 'custom' || hasVuetifyDropdownWrapper(el));
+
+    if (isSelectizeDropdownFlow) {
+      const triggerRoot = el.closest('.selectize-control') || el;
+      // 「路名」子元素篩選文字要去掉段號前綴的理由跟 Vuetify 一致，見下方 filterText 註解。
+      const filterText = itemPlan.item.role === 'road' ? extractRoadNamePrefix(itemPlan.targetValue) : undefined;
+      const result = await fillSelectizeDropdown(triggerRoot, itemPlan.targetValue, { filterText });
+      markNeedsReview(
+        fieldLabel,
+        result.matched ? `已自動選取「${itemPlan.targetValue}」，請再次確認是否正確` : '找不到符合的選項，請手動點選',
+        el
+      );
+      return;
+    }
 
     if (isVuetifyDropdownFlow) {
       const triggerRoot = el.closest('.v-input') || el;

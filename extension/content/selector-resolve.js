@@ -24,6 +24,15 @@ export function hasVuetifyDropdownWrapper(el) {
   return !!el.closest('.v-select, .v-autocomplete');
 }
 
+// selectize.js 元件（桃園 selectize_Road/selectize_Road2）跟 Vuetify 是完全不同的下拉技術
+// （.selectize-control/.selectize-dropdown/.selectize-dropdown-content .option，無 ARIA role），
+// 供 fill-mode.js 判斷該走 content/selectize-dropdown-interaction.js 的點擊式選單流程，
+// 而不是 Vuetify 專用流程（見票券 14：.scratch/six-cities-mapping/issues/14-selectize-dropdown-interaction.md）。
+export function hasSelectizeDropdownWrapper(el) {
+  if (!el || typeof el.closest !== 'function') return false;
+  return !!el.closest('.selectize-control');
+}
+
 // select2 外掛渲染的假 UI（.select2-container）永遠插在原本 <select> 的正後方 sibling，
 // 不是子節點也不是祖先節點，往內 querySelector／往外 closest 找 input/select/textarea 都碰不到
 // 這種「相鄰 sibling」關係（新北市行政區/路名欄位，見

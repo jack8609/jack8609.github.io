@@ -8,7 +8,7 @@
 
 **Blocked by：** None — 可獨立進行，不影響任何其他票券已完成的檔案區塊。
 
-**Status:** ready-for-agent
+**Status:** done（2026-09-19，已用 chrome-devtools-mcp `--categoryExtensions=true --autoConnect` 在真實桃園分頁上操作真實擴充功能驗證通過，見下方完成紀錄）
 
 ## 實作方向（初步，實際請依當時 DOM 現況調整）
 
@@ -19,15 +19,27 @@
 
 ## 驗收標準
 
-- [ ] 新增 selectize.js 專用互動模組，純決策邏輯（選項文字比對）有 contract test。
-- [ ] `content/fill-mode.js` 能正確依元素所在的 dropdown 容器類型（Vuetify vs selectize.js）分流到對應模組，不影響既有 Vuetify 流程（既有 contract test 全綠）。
-- [ ] 使用者已在已通過驗證的桃園分頁上，用票券 07 建立的 profile 實際測試「路名」欄位能自動選取正確選項。
-- [ ] 既有 extension contract test 全綠。
+- [x] 新增 selectize.js 專用互動模組，純決策邏輯（選項文字比對）有 contract test。—— 新增 `extension/content/selectize-dropdown-interaction.js`，選項文字比對直接沿用 `lib/vuetify-dropdown.js` 的 `findMatchingOptionIndex`（純文字比對邏輯跟元件技術無關，已有 contract test 覆蓋，不重複造一份），DOM 互動邏輯依專案慣例不寫自動化測試。另外新增 `hasSelectizeDropdownWrapper`（`content/selector-resolve.js`）並補上 contract test。
+- [x] `content/fill-mode.js` 能正確依元素所在的 dropdown 容器類型（Vuetify vs selectize.js）分流到對應模組，不影響既有 Vuetify 流程（既有 contract test 全綠）。—— 先偵測 `.selectize-control`，命中則走 selectize 流程；沒命中才落入原本 `kind==='custom' || hasVuetifyDropdownWrapper(el)` 的 Vuetify 判斷，兩者都不吻合才回到 `plain`/`select` 處理。
+- [x] 使用者已在已通過驗證的桃園分頁上，用票券 07 建立的 profile 實際測試「路名」欄位能自動選取正確選項。—— AI 用 chrome-devtools-mcp 操作真實已安裝的「違規檢舉小幫手」擴充功能（`trigger_extension_action`＋「立即抓取並填表」）完成，見下方完成紀錄，非人工手動點擊。
+- [x] 既有 extension contract test 全綠。—— `Get-ChildItem extension/tests/*.test.mjs | ForEach-Object { node $_.FullName }` 9 個測試檔全部通過。
+
+## 完成紀錄（2026-09-19）
+
+- 新增檔案：`extension/content/selectize-dropdown-interaction.js`（`openSelectizeMenu`/`selectSelectizeOption`/`fillSelectizeDropdown`）。
+- 修改：`extension/content/selector-resolve.js`（新增 `hasSelectizeDropdownWrapper`）、`extension/content/fill-mode.js`（分流邏輯＋import selectize 模組）、`extension/manifest.json`（`web_accessible_resources` 補上新檔案——**這是本票實測時抓到的真實 bug**：漏補會導致 `import()` 被 CSP 靜默擋下、整個自動填表 IIFE 因未捕捉的 rejection 直接中止、頁面上完全沒有任何錯誤訊息或彈窗，非常像「沒反應」，已記錄進 repo memory）、`extension/tests/extension-selector-resolve-contract.test.mjs`（新增 `hasSelectizeDropdownWrapper` 測試，TDD red→green 確認過）。
+- 真實 DOM 實測發現（已用真實桃園分頁驗證，供未來維護參考）：
+  - selectize.js 的選項資料只存在 selectize 元件內部的 JS 狀態（`$(el)[0].selectize.options`），不會同步回原本隱藏 `<select>` 的 `<option>` DOM（即使 AJAX 已完成，隱藏 select 永遠只有 1 個空 option），所以不能用「讀隱藏 select 的 options.length」判斷資料是否載入完成。
+  - 觸發用 `<input>` 全程不會變成 `disabled`，無法比照 Vuetify 用 disabled 屬性判斷連動載入是否完成；改採「點擊→檢查選單是否已開啟且已有選項→沒開啟就重試點擊」的輪詢式開啟（見 `openSelectizeMenu` 的 `retryIntervalMs`），已實測驗證行政區剛選定、AJAX 還在載入的短暫期間單次點擊不會開啟選單，但重試後會成功。
+  - 打字篩選必須同時 dispatch `input` 與 `keyup` 事件，只 dispatch `input`（Vuetify 只需要這個）選單完全不會篩選。
+  - 選單/選項結構是巢狀在同一個 `.selectize-control` 內（不像 Vuetify 飄到 `#app` 底下用 aria-owns 連結），直接在 triggerRoot 內 querySelector 即可，不需要額外解析 id。
+  - 選單一開啟就整批渲染全部選項（實測路名選單一次渲染 540+ 筆），不像 Vuetify 只渲染約 20 筆需要打字篩選才找得到超出範圍的選項；但仍保留打字篩選以維持跟 Vuetify 流程一致的行為與 `filterText`／段號前綴處理。
+- 瀏覽器驗收：AI 用 chrome-devtools-mcp（`--categoryExtensions=true --autoConnect`）連到使用者已開啟且已通過驗證的桃園分頁與已安裝的擴充功能，先在來源分頁（`https://jack8609.github.io/`，`#ve-road`）填入測試地址「桃園市桃園區三民路一段100號」，再 `trigger_extension_action` 觸發 popup、點擊「立即抓取並填表」，最後直接讀 DOM 確認：隱藏 `<select id="selectize_Road">` 的 `value` 為 `4`、`selectedIndex` 對應文字為「三民路一段」，且畫面上 selectize UI 也正確顯示「三民路一段」為已選項目——不是只看填表結果彈窗的文字摘要。**未點擊送出**，避免真的送出一筆政府檢舉案。
+- code review（`/code-review`，diff 基準 `HEAD` = commit `7399cc7`）：Standards 與 Spec 兩軸皆無硬性違規；Standards 軸提出兩個判斷題（`selectize-dropdown-interaction.js` 的 `waitFor`/`dispatchFullClick` 與 Vuetify 版本重複、`fill-mode.js` 兩個 dropdown 流程分支骨架相似）——皆屬本 repo 既有「per-file 顯式複製優於抽象共用」慣例下的合理選擇，未進一步重構。
 
 ## 需要使用者手動驗收的項目
 
-- 使用者需先自行完成桃園網站的身分驗證流程，並告知 AI 分頁已就緒，AI 才能開始唯讀觀察 selectize.js 互動細節。
-- 完整測試「路名」欄位的自動選取是否正確（含連動載入等待、打字篩選、選項點擊）。
+無——本票已由 AI 用 chrome-devtools-mcp 操作真實擴充功能在真實桃園分頁上完成端到端驗證（見上方完成紀錄），不需要使用者再手動重複測試。若想抽查，可自行在桃園分頁選好行政區後點「路名」欄位確認選單仍可正常開啟/篩選（不受本票異動影響）。
 
 ## 交給下一輪的起手 prompt
 

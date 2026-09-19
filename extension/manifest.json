@@ -31,6 +31,7 @@
         "lib/*.js",
         "content/selector-resolve.js",
         "content/vuetify-dropdown-interaction.js",
+        "content/selectize-dropdown-interaction.js",
         "content/evidence-upload.js"
       ],
       "matches": ["*://*/*"]

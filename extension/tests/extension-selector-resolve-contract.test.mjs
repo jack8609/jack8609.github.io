@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-const { hasVuetifyWrapper, hasVuetifyDropdownWrapper, resolveSelect2Select, resolveFileTriggerInput } =
+const { hasVuetifyWrapper, hasVuetifyDropdownWrapper, hasSelectizeDropdownWrapper, resolveSelect2Select, resolveFileTriggerInput } =
   await import('../content/selector-resolve.js');
 
 // hasVuetifyWrapper：純 DOM 判斷邏輯，用假物件模擬 closest() 回傳值即可測試，不需要真實瀏覽器
@@ -36,6 +36,24 @@ const { hasVuetifyWrapper, hasVuetifyDropdownWrapper, resolveSelect2Select, reso
 {
   assert.strictEqual(hasVuetifyDropdownWrapper(null), false, '空元素不拋錯，回傳 false');
   assert.strictEqual(hasVuetifyDropdownWrapper({}), false, '沒有 closest 方法的物件不拋錯，回傳 false');
+}
+
+// hasSelectizeDropdownWrapper：selectize.js 元件（桃園 selectize_Road/selectize_Road2）用
+// .selectize-control 容器，跟 Vuetify 完全是不同的元件技術，用 closest() 各自獨立判斷
+// （見票券 14：.scratch/six-cities-mapping/issues/14-selectize-dropdown-interaction.md）。
+{
+  const fakeSelectizeEl = { closest: (sel) => (sel === '.selectize-control' ? { tagName: 'DIV' } : null) };
+  assert.strictEqual(hasSelectizeDropdownWrapper(fakeSelectizeEl), true, '位於 .selectize-control 容器內要回傳 true');
+}
+
+{
+  const fakePlainEl = { closest: () => null };
+  assert.strictEqual(hasSelectizeDropdownWrapper(fakePlainEl), false, '非 selectize 容器要回傳 false');
+}
+
+{
+  assert.strictEqual(hasSelectizeDropdownWrapper(null), false, '空元素不拋錯，回傳 false');
+  assert.strictEqual(hasSelectizeDropdownWrapper({}), false, '沒有 closest 方法的物件不拋錯，回傳 false');
 }
 
 // resolveSelect2Select：select2 假 UI（.select2-container）永遠插在原本 <select> 的正後方
