@@ -13,6 +13,7 @@
         "date",
         "time",
         "location",
+        "violation",
         "description"
       ],
       "fields": {
@@ -46,6 +47,14 @@
             { "kind": "plain", "value": "#addSubLane", "role": "subLane" },
             { "kind": "plain", "value": "#addNo", "role": "houseNumber" },
             { "kind": "plain", "value": "#shouhou2", "role": "remainder" }
+          ]
+        },
+        "violation": {
+          "riskField": true,
+          "selector": [
+            { "kind": "select", "value": "#chose_type", "role": "candidate-controller" },
+            { "kind": "select", "value": "#chosen1", "role": "candidate", "controllerValue": "動態違規" },
+            { "kind": "select", "value": "#chosen2", "role": "candidate", "controllerValue": "靜態違規" }
           ]
         },
         "description": {
