@@ -14,7 +14,8 @@
         "time",
         "location",
         "violation",
-        "description"
+        "description",
+        "evidenceImages"
       ],
       "fields": {
         "plate": {
@@ -61,6 +62,16 @@
           "riskField": false,
           "selector": [
             { "kind": "plain", "value": "#case_note" }
+          ]
+        },
+        "evidenceImages": {
+          "riskField": false,
+          "selector": [
+            { "kind": "file-slots", "value": "#files1" },
+            { "kind": "file-slots", "value": "#files2" },
+            { "kind": "file-slots", "value": "#files3" },
+            { "kind": "file-slots", "value": "#files4" },
+            { "kind": "file-slots", "value": "#files5" }
           ]
         }
       }
