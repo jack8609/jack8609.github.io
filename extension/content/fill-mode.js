@@ -183,7 +183,8 @@
   // 獨立、互不依賴的純數字輸入框，填入順序理論上不影響結果，這裡沿用「行政區→路名→其餘片段」
   // 的邏輯順序排在 road 之後、remainder 之前即可，不需要更精細的排序。
   const LOCATION_ROLE_PRIORITY = {
-    city: 0, district: 1, road: 2, alley: 3, lane: 4, subLane: 5, houseNumber: 6, subNumber: 7, remainder: 8
+    city: 0, district: 1, road: 2, alley: 3, lane: 4, subLane: 5, houseNumber: 6, subNumber: 7,
+    remainder: 8, roadAndRemainder: 8
   };
   function orderFieldItems(fieldName, items) {
     if (fieldName !== 'location') return items;
@@ -202,6 +203,7 @@
       case 'address-missing-district': return '地址字串解析不出行政區，請手動選擇';
       case 'address-missing-road': return '地址字串解析不出路名，請手動確認或選擇';
       case 'address-missing-remainder': return '地址字串沒有路名後面的其餘內容，請手動填寫';
+      case 'address-missing-road-and-remainder': return '地址字串解析不出任何內容，請手動填寫';
       case 'address-missing-alley': return '地址字串解析不出「巷」，請手動填寫';
       case 'address-missing-lane': return '地址字串解析不出「弄」，請手動填寫';
       case 'address-missing-sublane': return '地址字串解析不出「衖」，請手動填寫';
@@ -347,6 +349,19 @@
     );
     if (!controllerEl) return;
 
+    // 票券 08（高雄「大類→細項」二層連動）：只有 1 個候選 select 且沒有固定 controllerValue，
+    // 代表它的選項內容依控制型 select 切到哪個大類即時動態換掉（AJAX/postback），跟桃園 N 個
+    // 候選 select 同時存在 DOM、選項早已載入完成的靜態情境不同，走專屬的探測流程。
+    const isDynamicCandidate = candidateItems.length === 1 && !candidateItems[0].controllerValue;
+    if (isDynamicCandidate) {
+      if (!sourceValue) {
+        markNeedsReview(fieldLabel, '來源網站沒有這個欄位的資料，需要手動填寫', controllerEl);
+        return;
+      }
+      await applyDynamicViolationCascade(controllerItem, candidateItems[0], fieldLabel, sourceValue, fuzzyAllowed);
+      return;
+    }
+
     const groups = [];
     for (const item of candidateItems) {
       const el = await resolveWithRetry(item.value);
@@ -398,6 +413,69 @@
     markNeedsReview(
       fieldLabel, `已自動選取「${targetGroup.optionTexts[match.optionIndex]}」，請再次確認是否正確`, targetGroup.el
     );
+  }
+
+  // 票券 08（高雄「大類→細項」二層連動）：候選 select 只有 1 個、內容依控制型 select 選了哪個
+  // 大類即時動態換掉（ASP.NET UpdatePanel 局部回傳，非同一份清單只是換顯示）。
+  // **2026-09-20 用 chrome-devtools-mcp 對高雄真實分頁實測發現**：每次局部回傳，控制型／候選
+  // select 都會被整個換成新的 DOM 節點（不是只更新既有節點的 options），沿用迴圈開始前解析好
+  // 的舊元素參照，後續賦值只會打在已經被丟棄的舊節點上、畫面完全沒反應也不會報錯——所以下面
+  // 每一輪都要用 resolveWithRetry 依 id 重新查詢當下真正在文件裡的節點，不能只在迴圈外解析一次
+  // 就快取起來沿用。依序把控制型 select 切到每個大類、等候選 select 真的因回傳重新載入（比對
+  // 選項文字是否跟切換前不同，而不是只看 options.length>0——候選 select 一開始就帶 1 個
+  // 「請選擇」占位選項，length>0 一開始就成立，若只看這個條件會誤判成「已經載入完成」而抓到
+  // 切換前的舊清單），再拿來源文字去比對，第一個命中就停止並回傳。全部大類都試過仍找不到，就把
+  // 控制型 select 復原成切換前的值，避免留下「看起來選了大類、細項卻是空的」的半殘狀態。
+  async function applyDynamicViolationCascade(controllerItem, candidateItem, fieldLabel, sourceValue, fuzzyAllowed) {
+    const initialControllerEl = await resolveOrMarkNeedsReview(
+      controllerItem.value, fieldLabel, '找不到候選群組控制型 select，可能已失效，請重新綁定這個欄位'
+    );
+    if (!initialControllerEl) return;
+    const initialCandidateEl = await resolveOrMarkNeedsReview(
+      candidateItem.value, fieldLabel, '找不到候選 select，可能已失效，請重新綁定這個欄位'
+    );
+    if (!initialCandidateEl) return;
+
+    await waitFor(() => (initialControllerEl.options && initialControllerEl.options.length > 0) || null);
+    const originalControllerValue = initialControllerEl.value;
+    const controllerOptionValues = Array.from(initialControllerEl.options)
+      .filter((option) => option.value)
+      .map((option) => option.value);
+
+    for (const optionValue of controllerOptionValues) {
+      const controllerEl = await resolveWithRetry(controllerItem.value);
+      const candidateElBefore = await resolveWithRetry(candidateItem.value);
+      if (!controllerEl || !candidateElBefore) break;
+
+      const previousTexts = Array.from(candidateElBefore.options).map((o) => o.textContent.trim()).join('|');
+      controllerEl.value = optionValue;
+      controllerEl.dispatchEvent(new Event('change', { bubbles: true }));
+
+      await waitFor(() => {
+        const liveCandidateEl = resolveSelectorItem(candidateItem.value);
+        if (!liveCandidateEl) return null;
+        const currentTexts = Array.from(liveCandidateEl.options).map((o) => o.textContent.trim());
+        return (currentTexts.length > 0 && currentTexts.join('|') !== previousTexts) || null;
+      }, { timeoutMs: 3000 });
+
+      const candidateElAfter = await resolveWithRetry(candidateItem.value);
+      if (!candidateElAfter) continue;
+      const optionTexts = Array.from(candidateElAfter.options).map((o) => o.textContent.trim());
+      const match = resolveOptionMatch(optionTexts, sourceValue, { fuzzyAllowed });
+      if (match.matched) {
+        candidateElAfter.value = candidateElAfter.options[match.index].value;
+        candidateElAfter.dispatchEvent(new Event('change', { bubbles: true }));
+        markNeedsReview(fieldLabel, `已自動選取「${optionTexts[match.index]}」，請再次確認是否正確`, candidateElAfter);
+        return;
+      }
+    }
+
+    const finalControllerEl = await resolveWithRetry(controllerItem.value);
+    if (finalControllerEl) {
+      finalControllerEl.value = originalControllerValue;
+      finalControllerEl.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    markNeedsReview(fieldLabel, '找不到符合的選項，請手動選取', finalControllerEl);
   }
 
   // evidenceImages 走專用流程（PLAN_B.md「已定案設計」），不套用上面 plain/select/custom 的

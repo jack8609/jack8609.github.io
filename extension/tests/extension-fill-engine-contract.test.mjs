@@ -271,6 +271,22 @@ const { resolveOptionMatch, applyDateTransform, buildFillPlan, resolveCandidateG
     assert.equal(noCityPlan[0].items[0].skipReason, 'address-missing-city');
   }
 
+  // 票券 08（高雄 mapping profile）：roadAndRemainder 供站方只給單一自由文字欄位、無法拆分
+  // 路名跟其餘地址的網站使用，回傳 road+remainder 合併後的完整字串（不能沿用 remainder，
+  // 那個語意會把路名本身弄丟）。
+  {
+    const roadAndRemainderProfile = {
+      fieldOrder: ['location'],
+      fields: { location: { riskField: false, selector: [{ kind: 'plain', value: '#addr', role: 'roadAndRemainder' }] } }
+    };
+    const plan = buildFillPlan({ address: '高雄市苓雅區中正路100號' }, roadAndRemainderProfile);
+    assert.equal(plan[0].items[0].targetValue, '中正路100號');
+
+    // 地址完全解不出任何內容時（road、remainder 都是空字串），要 skip 而不是填空字串
+    const emptyPlan = buildFillPlan({ address: '' }, roadAndRemainderProfile);
+    assert.equal(emptyPlan[0].items[0].skipReason, 'address-missing-road-and-remainder');
+  }
+
   // kind: file 一律 skip（附件上傳這個階段不會自動處理）
   const fileProfile = {
     fieldOrder: ['evidenceImages'],

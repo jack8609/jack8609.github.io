@@ -465,8 +465,9 @@ assert.deepEqual(LOGICAL_FIELDS, [
     validateProfile(withTwoControllers).valid, false, '候選群組控制型 select 最多只能綁定 1 個'
   );
 
-  // 候選 select 缺少 controllerValue：擋下來
-  const withMissingControllerValue = {
+  // 候選 select 缺少 controllerValue，但整個群組只有這 1 個候選 select：視為「動態切換」
+  // （票券 08 高雄大類→細項二層連動），通過驗證。
+  const withDynamicCandidate = {
     ...good,
     fields: {
       date: good.fields.date,
@@ -480,8 +481,29 @@ assert.deepEqual(LOGICAL_FIELDS, [
     },
     fieldOrder: ['date', 'violation']
   };
+  assert.deepEqual(
+    validateProfile(withDynamicCandidate), { valid: true, errors: [] },
+    '只有 1 個候選 select 且沒有 controllerValue，應視為動態切換並通過驗證'
+  );
+
+  // 2 個以上候選 select，其中一個缺少 controllerValue：仍要擋下來（動態切換只允許剛好 1 個候選）
+  const withMissingControllerValue = {
+    ...good,
+    fields: {
+      date: good.fields.date,
+      violation: {
+        riskField: true,
+        selector: [
+          { kind: 'select', value: '#chose_type', role: 'candidate-controller' },
+          { kind: 'select', value: '#chosen1', role: 'candidate' },
+          { kind: 'select', value: '#chosen2', role: 'candidate', controllerValue: '靜態違規' }
+        ]
+      }
+    },
+    fieldOrder: ['date', 'violation']
+  };
   assert.strictEqual(
-    validateProfile(withMissingControllerValue).valid, false, '候選 select 必須帶 controllerValue'
+    validateProfile(withMissingControllerValue).valid, false, '2 個以上候選 select 時每個都必須有 controllerValue'
   );
 
   // 兩個候選 select 的 controllerValue 重複：擋下來（引擎無法判斷該切到哪一個）

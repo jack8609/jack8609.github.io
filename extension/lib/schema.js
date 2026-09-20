@@ -24,8 +24,12 @@ const FIELD_KINDS = ['plain', 'select', 'custom', 'file', 'file-trigger', 'file-
 // - alley/lane/subLane/houseNumber/subNumber：供桃園這類把巷/弄/衖/號/之拆成各自獨立輸入框的網站
 //   使用，對應 lib/address-parser.js 從 remainder 再解析出的同名片段。
 // remainder 仍保留給只有單一「其餘地址」欄位的網站（臺北/臺中既有 profile 不受影響）。
+// 票券 08（高雄 mapping profile）新增：roadAndRemainder 供高雄這類「路名跟其餘地址無法拆分成
+// 兩個獨立欄位、站方只給單一自由文字欄位」的網站使用——不能沿用既有的 remainder（那個語意是
+// 「路名之後剩下的部分」，會把路名本身弄丟），對應 lib/fill-engine.js 直接回傳 road+remainder
+// 合併後的完整字串。
 export const LOCATION_ROLES = [
-  'city', 'district', 'road', 'remainder', 'alley', 'lane', 'subLane', 'houseNumber', 'subNumber'
+  'city', 'district', 'road', 'remainder', 'alley', 'lane', 'subLane', 'houseNumber', 'subNumber', 'roadAndRemainder'
 ];
 
 // 對應模式面板（短版，逐子元素顯示用）與角色選擇 modal（長版，含例子的說明文字，見
@@ -33,7 +37,8 @@ export const LOCATION_ROLES = [
 // 避免像 FIELD_LABELS 那樣各自維護出分岔。
 export const LOCATION_ROLE_LABELS = {
   city: '縣市', district: '行政區', road: '路名', remainder: '其餘',
-  alley: '巷', lane: '弄', subLane: '衖', houseNumber: '號', subNumber: '之'
+  alley: '巷', lane: '弄', subLane: '衖', houseNumber: '號', subNumber: '之',
+  roadAndRemainder: '路名+其餘（單一欄位）'
 };
 
 // 票券 02 新增：evidenceImages 的 selector item 可選標記 role，供高雄這類「選檔後還要再按一次
@@ -225,14 +230,21 @@ export function validateProfile(profile) {
       if (candidateItems.length > 0 && controllerItems.length !== 1) {
         errors.push(`欄位 ${name} 有候選 select 時必須剛好綁定 1 個候選群組控制型 select`);
       }
-      candidateItems.forEach((item, idx) => {
-        if (!item.controllerValue) {
-          errors.push(`欄位 ${name} 第 ${idx} 個候選 select 缺少 controllerValue`);
+      // 票券 08（高雄「大類→細項」二層連動）：候選 select 只有 1 個、內容依控制型 select 選了
+      // 哪個大類即時動態換掉（AJAX/postback 換選項），不像桃園 N 個候選 select 各自固定對應
+      // 一個大類、同時存在 DOM——這種情況下唯一的候選 select 不需要（也無法）指定固定的
+      // controllerValue，執行期改走 content/fill-mode.js 的探測流程。只有「剛好 1 個候選
+      // select」時才允許省略 controllerValue；2 個以上候選 select 一律沿用原本規則，每個都要
+      // 有 controllerValue 才能讓引擎判斷該切到哪一個。
+      const itemsWithoutControllerValue = candidateItems.filter((item) => !item.controllerValue);
+      if (itemsWithoutControllerValue.length > 0 && candidateItems.length !== 1) {
+        errors.push(`欄位 ${name} 只有整個候選群組僅 1 個候選 select（動態切換）時才能省略 controllerValue，其餘候選 select 都必須指定`);
+      }
+      if (itemsWithoutControllerValue.length === 0) {
+        const controllerValues = candidateItems.map((item) => item.controllerValue);
+        if (new Set(controllerValues).size !== controllerValues.length) {
+          errors.push(`欄位 ${name} 的候選 select controllerValue 不可重複`);
         }
-      });
-      const controllerValues = candidateItems.map((item) => item.controllerValue).filter(Boolean);
-      if (new Set(controllerValues).size !== controllerValues.length) {
-        errors.push(`欄位 ${name} 的候選 select controllerValue 不可重複`);
       }
     }
 

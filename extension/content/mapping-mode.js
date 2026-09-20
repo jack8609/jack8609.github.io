@@ -28,6 +28,12 @@
   } = resolveMod;
 
   const store = createProfileStore(chrome.storage.local);
+
+  // 票券 08（高雄「大類→細項」二層連動）：候選 select 綁定流程用這個內部標記代表使用者明確
+  // 選擇「動態切換」（不對應單一固定選項），純粹是 UI 流程內的哨兵值，不會存進 profile JSON
+  // 本身——存檔的候選 item 只是單純沒有 controllerValue 欄位（見 lib/schema.js 的候選群組驗證）。
+  const DYNAMIC_CANDIDATE_MARKER = '__dynamic__';
+
   const siteId = siteIdFromHostname(location.hostname);
   const originPattern = originPatternFromUrl(location.href);
 
@@ -107,7 +113,10 @@
       } else if (fieldName === 'violation' && item.role === 'candidate-controller') {
         container.appendChild(document.createTextNode(`${item.kind}:${text} [${VIOLATION_ROLE_LABELS[item.role]}]`));
       } else if (fieldName === 'violation' && item.role === 'candidate') {
-        container.appendChild(document.createTextNode(`${item.kind}:${text} [${VIOLATION_ROLE_LABELS[item.role]}→${item.controllerValue}]`));
+        // 票券 08：省略 controllerValue 代表這個候選 select 是「依控制型即時動態切換」（高雄
+        // 大類→細項二層連動），不是漏填，用專屬文案跟桃園那種固定候選區分開來。
+        const controllerLabel = item.controllerValue || '動態切換';
+        container.appendChild(document.createTextNode(`${item.kind}:${text} [${VIOLATION_ROLE_LABELS[item.role]}→${controllerLabel}]`));
       } else if ((fieldName === 'date' || fieldName === 'time') && item.role === 'datetime-merge') {
         container.appendChild(document.createTextNode(`${item.kind}:${text} [${DATETIME_ROLE_LABELS[item.role]}]`));
       } else {
@@ -607,7 +616,23 @@
   // （controllerValue，見 lib/schema.js 的候選元素群組驗證）。優先讀取已綁定的控制型 select
   // 目前真實存在的選項清單，讓使用者用點選的（跟 showValueMapModal 讀真實選項的精神一致，避免
   // 手動輸入打錯字跟真實選項文字對不起來）；控制型 select 解析不到時才退回自由輸入文字。
-  function promptCandidateControllerValue(existingSelector) {
+  // 票券 08：高雄「大類→細項」二層連動只有 1 個候選 select，內容依控制型 select 選了哪個大類
+  // 即時動態換掉（AJAX/postback），不是桃園那種「N 個候選 select 各自固定對應 1 個大類、同時
+  // 存在 DOM」的靜態情境，這種候選 select 不需要（也無法）指定固定的 controllerValue——先問
+  // 使用者這個候選 select 是固定的還是動態的，選「動態」時直接回傳 DYNAMIC_CANDIDATE_MARKER，
+  // 讓呼叫端知道這是刻意選擇、不是取消綁定（見 lib/schema.js 只允許剛好 1 個候選 select 時
+  // 省略 controllerValue 的規則）。
+  async function promptCandidateControllerValue(existingSelector) {
+    const mode = await showButtonListModal(
+      '這個候選 select 的內容是固定的，還是依控制型 select 目前選到哪個大類即時動態切換？',
+      [
+        { value: DYNAMIC_CANDIDATE_MARKER, label: '動態切換（內容隨控制型即時變化，例如高雄違規細項二層連動）' },
+        { value: 'static', label: '固定（只對應控制型的某個特定選項，例如桃園動態/靜態違規）' }
+      ]
+    );
+    if (mode === DYNAMIC_CANDIDATE_MARKER) return DYNAMIC_CANDIDATE_MARKER;
+    if (!mode) return undefined;
+
     const controllerItem = existingSelector && existingSelector.find((item) => item.role === 'candidate-controller');
     const controllerEl = controllerItem && resolveSelectorItem(controllerItem.value);
     if (controllerEl && controllerEl.tagName === 'SELECT' && controllerEl.options && controllerEl.options.length) {
@@ -637,7 +662,8 @@
       lane: '（巷弄門牌的「弄」，只填數字，例如「6」）',
       subLane: '（巷弄門牌的「衖」，只填數字，較少見）',
       houseNumber: '（門牌「號」，只填數字，例如「100」）',
-      subNumber: '（門牌「之」，只填數字，例如「3」）'
+      subNumber: '（門牌「之」，只填數字，例如「3」）',
+      roadAndRemainder: '（站方只給單一自由文字欄位，無法拆分路名，整段含路名一起填入）'
     };
     const roleLabels = Object.fromEntries(
       LOCATION_ROLES.map((value) => [value, `${LOCATION_ROLE_LABELS[value] || value}${roleExamples[value] || ''}`])
@@ -858,16 +884,19 @@
     }
 
     // 候選 select 綁定時額外詢問「控制型 select 切到哪個選項文字，這份候選清單才會生效」
-    // （見 lib/schema.js 的候選元素群組驗證）；使用者沒有輸入就放棄這次綁定，不存半殘的候選
-    // item（沒有 controllerValue 的候選 item 存進去也會被 schema.js 的 validateProfile 擋下）。
+    // （見 lib/schema.js 的候選元素群組驗證）；使用者沒有選擇就放棄這次綁定，不存半殘的候選
+    // item（沒有 controllerValue 又不是明確選擇動態切換的候選 item，存進去也會被
+    // schema.js 的 validateProfile 擋下）。DYNAMIC_CANDIDATE_MARKER 是明確選了「動態切換」，
+    // 轉成 undefined 讓下面組 newItem 時自然省略 controllerValue 欄位（票券 08）。
     let controllerValue;
     if (isCandidatePick) {
-      controllerValue = await promptCandidateControllerValue(existing && existing.selector);
-      if (!controllerValue) {
-        await showAlertModal('沒有輸入控制型 select 對應的選項文字，這個候選 select 不會被綁定，請重新點選一次。');
+      const pickedControllerValue = await promptCandidateControllerValue(existing && existing.selector);
+      if (!pickedControllerValue) {
+        await showAlertModal('沒有選擇控制型 select 對應的選項文字，這個候選 select 不會被綁定，請重新點選一次。');
         stopPicking();
         return;
       }
+      controllerValue = pickedControllerValue === DYNAMIC_CANDIDATE_MARKER ? undefined : pickedControllerValue;
     }
 
     const pickedValue = ['id', 'name', 'attributeFingerprint'].includes(descriptor.type) ? descriptor.value : descriptor;

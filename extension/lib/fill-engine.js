@@ -130,6 +130,14 @@ function buildLocationItemPlan(item, sourceData) {
   if (item.role === 'remainder') {
     return parsed.remainder ? { item, targetValue: parsed.remainder } : { item, skipReason: 'address-missing-remainder' };
   }
+  // 票券 08（高雄 mapping profile）新增：站方只給單一自由文字欄位承載「路名+其餘」，不能沿用
+  // 上面的 remainder（那個語意是「路名之後剩下的部分」，直接拿來用會把路名本身弄丟），這裡回傳
+  // road+remainder 合併後的完整字串，只要合併結果非空就填（road 或 remainder 任一為空都沒關係，
+  // 兩者串起來就是「行政區之後的完整地址原文」）。
+  if (item.role === 'roadAndRemainder') {
+    const combined = `${parsed.road}${parsed.remainder}`;
+    return combined ? { item, targetValue: combined } : { item, skipReason: 'address-missing-road-and-remainder' };
+  }
   // 票券 07（桃園 mapping profile）新增：巷/弄/衖/號/之各自獨立輸入框的網站，各自從
   // lib/address-parser.js 解析出的同名純數字片段取值，解不出來就 skip，不猜測填空字串。
   if (item.role === 'alley') {

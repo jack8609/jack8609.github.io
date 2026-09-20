@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "exportedAt": "2026-09-20T00:00:00.000Z",
+  "profiles": {
+    "policemail_kcg_gov_tw": {
+      "siteId": "policemail_kcg_gov_tw",
+      "displayName": "高雄市政府警察局警政信箱（交通違規檢舉）",
+      "matchPatterns": [
+        "https://policemail.kcg.gov.tw/*"
+      ],
+      "fieldOrder": [
+        "plate",
+        "location",
+        "violation",
+        "description"
+      ],
+      "fields": {
+        "plate": {
+          "riskField": false,
+          "selector": [
+            { "kind": "plain", "value": "#ContentPlaceHolder1_LicenseNo" },
+            { "kind": "plain", "value": "#ContentPlaceHolder1_LicenseNo2" }
+          ]
+        },
+        "location": {
+          "riskField": true,
+          "selector": [
+            { "kind": "select", "value": "#ContentPlaceHolder1_uscPlace_ddlArea", "role": "district" },
+            { "kind": "plain", "value": "#ContentPlaceHolder1_uscPlace_txtAddress", "role": "roadAndRemainder" }
+          ]
+        },
+        "violation": {
+          "riskField": true,
+          "selector": [
+            { "kind": "select", "value": "#ContentPlaceHolder1_ddlViolationEventCategory", "role": "candidate-controller" },
+            { "kind": "select", "value": "#ContentPlaceHolder1_TitleDropDownList", "role": "candidate" }
+          ]
+        },
+        "description": {
+          "riskField": false,
+          "selector": [
+            { "kind": "plain", "value": "#ContentPlaceHolder1_Content" }
+          ]
+        }
+      }
+    }
+  }
+}
