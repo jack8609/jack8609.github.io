@@ -1,5 +1,10 @@
 import { createProfileStore } from '../lib/storage.js';
 import { createSiteContextService } from '../lib/site-context.js';
+import {
+  getCurrentSiteActionState,
+  getProfileListActionState,
+  normalizeDisplayName
+} from './view-state.js';
 
 const store = createProfileStore(chrome.storage.local);
 const siteContext = createSiteContextService(store);
@@ -41,50 +46,114 @@ function clearChildren(el) {
   while (el.firstChild) el.removeChild(el.firstChild);
 }
 
-async function renderCurrentSite() {
-  const ctx = await getCurrentSiteContext();
-  clearChildren(currentSiteActionsEl);
+function createButton({ text, className = '', disabled = false, title = '', onClick }) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.textContent = text;
+  button.className = className;
+  button.disabled = disabled;
+  button.title = title;
+  if (onClick && !disabled) button.addEventListener('click', onClick);
+  return button;
+}
+
+async function renameCurrentProfile(profile) {
+  const requestedName = window.prompt('網站名稱', profile.displayName);
+  if (requestedName === null) return;
+
+  const displayName = normalizeDisplayName(requestedName);
+  if (!displayName) {
+    currentSiteErrorEl.textContent = '網站名稱不可為空白。';
+    return;
+  }
+
+  currentSiteErrorEl.textContent = '';
+  await store.saveProfile({ ...profile, displayName });
+  await renderCurrentSite();
+  await renderProfileList();
+}
+
+function renderCurrentSiteInfo(ctx) {
+  clearChildren(currentSiteInfoEl);
+  currentSiteInfoEl.classList.remove('site-message');
 
   if (!ctx.supported) {
+    currentSiteInfoEl.classList.add('site-message');
     currentSiteInfoEl.textContent = '這個分頁不是可註冊的目標網站（僅支援 http/https 網頁）。';
     return;
   }
 
-  currentSiteInfoEl.textContent = ctx.granted
-    ? `${ctx.hostname}（已註冊${ctx.profile?.fieldOrder.length ? '，已建檔' : '，尚未建立欄位對應'}）`
-    : `${ctx.hostname}（尚未註冊）`;
+  const nameRow = document.createElement('div');
+  nameRow.className = 'site-name-row';
 
-  if (!ctx.granted) {
-    const registerBtn = document.createElement('button');
-    registerBtn.type = 'button';
-    registerBtn.textContent = '註冊這個網站';
-    registerBtn.addEventListener('click', async () => {
+  const name = document.createElement('span');
+  name.className = 'site-name';
+  name.textContent = ctx.profile?.displayName || ctx.hostname;
+  name.title = name.textContent;
+  nameRow.appendChild(name);
+
+  if (ctx.profile) {
+    const renameBtn = createButton({
+      text: '✎',
+      className: 'site-name-edit',
+      title: '編輯網站名稱',
+      onClick: async () => renameCurrentProfile(ctx.profile)
+    });
+    renameBtn.setAttribute('aria-label', '編輯網站名稱');
+    nameRow.appendChild(renameBtn);
+  }
+
+  currentSiteInfoEl.appendChild(nameRow);
+
+  if (ctx.profile) {
+    const hostname = document.createElement('p');
+    hostname.className = 'site-hostname';
+    hostname.textContent = ctx.hostname;
+    hostname.title = ctx.hostname;
+    currentSiteInfoEl.appendChild(hostname);
+  }
+
+  const status = document.createElement('span');
+  status.className = `site-status${ctx.granted ? '' : ' unregistered'}`;
+  status.textContent = ctx.granted
+    ? `已註冊 · ${ctx.profile?.fieldOrder.length || 0} 個欄位已對應`
+    : '尚未註冊';
+  currentSiteInfoEl.appendChild(status);
+}
+
+async function renderCurrentSite() {
+  const ctx = await getCurrentSiteContext();
+  const actionState = getCurrentSiteActionState(ctx);
+  clearChildren(currentSiteActionsEl);
+  renderCurrentSiteInfo(ctx);
+
+  if (!ctx.supported) {
+    return;
+  }
+
+  const actionGrid = document.createElement('div');
+  actionGrid.className = `site-action-grid${actionState.canRegister ? ' is-unregistered' : ''}`;
+
+  if (actionState.canRegister) {
+    actionGrid.appendChild(createButton({
+      text: '註冊這個網站',
+      className: 'primary site-register-action',
+      onClick: async () => {
       const granted = await chrome.permissions.request({ origins: [ctx.originPattern] });
       if (!granted) return;
       await injectMappingModeOrShowError(ctx.tab.id);
       await renderCurrentSite();
       await renderProfileList();
-    });
-    currentSiteActionsEl.appendChild(registerBtn);
-    return;
+      }
+    }));
   }
 
-  const mapBtn = document.createElement('button');
-  mapBtn.type = 'button';
-  mapBtn.textContent = '編輯這個網站的欄位對應';
-  mapBtn.addEventListener('click', async () => {
-    await injectMappingModeOrShowError(ctx.tab.id);
-  });
-  currentSiteActionsEl.appendChild(mapBtn);
-
-  // P2：已建檔（至少綁過一個欄位）的目標網站才給「立即抓取並填表」，沿用既有左鍵開管理彈出
-  // 視窗的行為不變，只是多一個按鈕觸發即時抓取來源分頁＋自動填表（ADR 0001 的即時抓取）。
-  if (ctx.profile && ctx.profile.fieldOrder.length > 0) {
-    const fillBtn = document.createElement('button');
-    fillBtn.type = 'button';
-    fillBtn.textContent = '立即抓取並填表';
-    fillBtn.title = '從還開著的違規檢舉小幫手分頁讀取資料，依欄位對應表填進這個網站的表單';
-    fillBtn.addEventListener('click', async () => {
+  actionGrid.appendChild(createButton({
+    text: '立即抓取並填表',
+    className: 'primary site-fill-action',
+    disabled: !actionState.canFill,
+    title: actionState.canFill ? '從來源分頁讀取資料並填入目前網站的表單' : '請先註冊並建立至少一個欄位對應',
+    onClick: async () => {
       currentSiteErrorEl.textContent = '';
       const result = await siteContext.runAutoFill(ctx.tab);
       if (!result.ok) {
@@ -94,38 +163,45 @@ async function renderCurrentSite() {
         return;
       }
       scheduleAutoClose();
-    });
-    currentSiteActionsEl.appendChild(fillBtn);
-  }
+    }
+  }));
 
-  const revokeBtn = document.createElement('button');
-  revokeBtn.type = 'button';
-  revokeBtn.className = 'danger';
-  revokeBtn.textContent = '取消註冊此網站';
-  revokeBtn.title = '收回擴充功能對此網站的存取權限；已建立的欄位對應設定會保留，之後可重新註冊沿用';
-  revokeBtn.addEventListener('click', async () => {
-    if (!window.confirm(`確定要取消註冊「${ctx.hostname}」嗎？（將收回存取權限，欄位對應設定會保留）`)) return;
-    await siteContext.revokeAccess(ctx.originPattern);
-    await renderCurrentSite();
-    await renderProfileList();
-    scheduleAutoClose();
-  });
-  currentSiteActionsEl.appendChild(revokeBtn);
+  actionGrid.appendChild(createButton({
+    text: '編輯欄位對應',
+    disabled: !actionState.canEditMapping,
+    title: actionState.canEditMapping ? '開啟欄位對應模式' : '請先註冊這個網站',
+    onClick: async () => injectMappingModeOrShowError(ctx.tab.id)
+  }));
 
-  if (ctx.profile) {
-    const deleteBtn = document.createElement('button');
-    deleteBtn.type = 'button';
-    deleteBtn.className = 'danger';
-    deleteBtn.textContent = '刪除此網站設定';
-    deleteBtn.addEventListener('click', async () => {
+  actionGrid.appendChild(createButton({
+    text: '取消註冊',
+    className: 'danger',
+    disabled: !actionState.canRevoke,
+    title: actionState.canRevoke ? '收回這個網站的存取權限；欄位對應設定會保留' : '請先註冊這個網站',
+    onClick: async () => {
+      if (!window.confirm(`確定要取消註冊「${ctx.hostname}」嗎？（將收回存取權限，欄位對應設定會保留）`)) return;
+      await siteContext.revokeAccess(ctx.originPattern);
+      await renderCurrentSite();
+      await renderProfileList();
+      scheduleAutoClose();
+    }
+  }));
+
+  actionGrid.appendChild(createButton({
+    text: '刪除設定',
+    className: 'danger',
+    disabled: !actionState.canDeleteProfile,
+    title: actionState.canDeleteProfile ? '刪除這個網站的欄位對應設定' : '尚無可刪除的網站設定',
+    onClick: async () => {
       if (!window.confirm(`確定要刪除「${ctx.hostname}」的欄位對應設定嗎？`)) return;
       await store.deleteProfile(ctx.siteId);
       await renderCurrentSite();
       await renderProfileList();
       scheduleAutoClose();
-    });
-    currentSiteActionsEl.appendChild(deleteBtn);
-  }
+    }
+  }));
+
+  currentSiteActionsEl.appendChild(actionGrid);
 }
 
 async function renderProfileList() {
@@ -143,52 +219,61 @@ async function renderProfileList() {
 
   for (const profile of entries) {
     const li = document.createElement('li');
+    const actionState = getProfileListActionState(currentCtx, profile);
+
+    const info = document.createElement('div');
+    info.className = 'profile-info';
 
     const name = document.createElement('span');
-    name.textContent = `${profile.displayName}（${profile.fieldOrder.length} 個欄位已對應）`;
-    li.appendChild(name);
+    name.className = 'profile-name';
+    name.textContent = profile.displayName;
+    name.title = profile.displayName;
+    info.appendChild(name);
 
-    const isCurrentSite = currentCtx.supported && currentCtx.siteId === profile.siteId;
-    if (isCurrentSite) {
-      const editBtn = document.createElement('button');
-      editBtn.type = 'button';
-      editBtn.textContent = '編輯';
-      editBtn.addEventListener('click', async () => {
-        await injectMappingModeOrShowError(currentCtx.tab.id);
-      });
-      li.appendChild(editBtn);
-    } else {
-      const hint = document.createElement('span');
-      hint.textContent = '（請先開啟此網站分頁再編輯）';
-      li.appendChild(hint);
-    }
+    const meta = document.createElement('span');
+    meta.className = 'profile-meta';
+    meta.textContent = actionState.isCurrentSite
+      ? `目前網站 · ${profile.fieldOrder.length} 個欄位已對應`
+      : '請先開啟此網站分頁再編輯';
+    info.appendChild(meta);
+    li.appendChild(info);
 
-    const revokeBtn = document.createElement('button');
-    revokeBtn.type = 'button';
-    revokeBtn.className = 'danger';
-    revokeBtn.textContent = '取消註冊';
-    revokeBtn.title = '收回擴充功能對此網站的存取權限；欄位對應設定會保留';
-    revokeBtn.addEventListener('click', async () => {
-      if (!window.confirm(`確定要取消註冊「${profile.displayName}」嗎？（將收回存取權限，欄位對應設定會保留）`)) return;
-      await siteContext.revokeAccess(profile.matchPatterns);
-      await renderCurrentSite();
-      await renderProfileList();
-      scheduleAutoClose();
-    });
-    li.appendChild(revokeBtn);
+    const actions = document.createElement('div');
+    actions.className = 'profile-actions';
 
-    const deleteBtn = document.createElement('button');
-    deleteBtn.type = 'button';
-    deleteBtn.className = 'danger';
-    deleteBtn.textContent = '刪除';
-    deleteBtn.addEventListener('click', async () => {
-      if (!window.confirm(`確定要刪除「${profile.displayName}」的欄位對應設定嗎？`)) return;
-      await store.deleteProfile(profile.siteId);
-      await renderCurrentSite();
-      await renderProfileList();
-      scheduleAutoClose();
-    });
-    li.appendChild(deleteBtn);
+    actions.appendChild(createButton({
+      text: '編輯',
+      disabled: !actionState.canEditMapping,
+      title: actionState.canEditMapping ? '開啟欄位對應模式' : '請先開啟此網站分頁再編輯',
+      onClick: async () => injectMappingModeOrShowError(currentCtx.tab.id)
+    }));
+
+    actions.appendChild(createButton({
+      text: '取消註冊',
+      className: 'danger',
+      title: '收回擴充功能對此網站的存取權限；欄位對應設定會保留',
+      onClick: async () => {
+        if (!window.confirm(`確定要取消註冊「${profile.displayName}」嗎？（將收回存取權限，欄位對應設定會保留）`)) return;
+        await siteContext.revokeAccess(profile.matchPatterns);
+        await renderCurrentSite();
+        await renderProfileList();
+        scheduleAutoClose();
+      }
+    }));
+
+    actions.appendChild(createButton({
+      text: '刪除',
+      className: 'danger',
+      title: '刪除這個網站的欄位對應設定',
+      onClick: async () => {
+        if (!window.confirm(`確定要刪除「${profile.displayName}」的欄位對應設定嗎？`)) return;
+        await store.deleteProfile(profile.siteId);
+        await renderCurrentSite();
+        await renderProfileList();
+        scheduleAutoClose();
+      }
+    }));
+    li.appendChild(actions);
 
     profileListEl.appendChild(li);
   }

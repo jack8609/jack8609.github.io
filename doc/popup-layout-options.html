@@ -1,0 +1,431 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>違規檢舉小幫手 - Popup 排版方案</title>
+  <style>
+    :root {
+      color: #162033;
+      font-family: "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 32px;
+      background: #dce7ef;
+    }
+
+    .board {
+      display: grid;
+      grid-template-columns: repeat(3, 420px);
+      gap: 32px;
+      align-items: start;
+    }
+
+    .option {
+      width: 420px;
+    }
+
+    .option-label {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin: 0 0 9px;
+      color: #364357;
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    .option-label small {
+      color: #667085;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .popup {
+      min-height: 810px;
+      padding: 18px;
+      background: #fff;
+      border: 1px solid #cbd6df;
+      box-shadow: 0 12px 28px rgb(34 54 78 / 18%);
+    }
+
+    h1, h2, p { margin: 0; }
+
+    h1 {
+      font-size: 20px;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin-top: 22px;
+      color: #526174;
+      font-size: 12px;
+      letter-spacing: 0;
+    }
+
+    button {
+      min-height: 34px;
+      border: 1px solid #b9c5d5;
+      border-radius: 5px;
+      background: #f8fafc;
+      color: #1e293b;
+      font: inherit;
+      font-size: 13px;
+      cursor: default;
+    }
+
+    button.primary {
+      border-color: #175ea8;
+      background: #1765ae;
+      color: #fff;
+      font-weight: 700;
+    }
+
+    button.danger {
+      border-color: #e3a5a5;
+      background: #fffafa;
+      color: #b42318;
+    }
+
+    button:disabled {
+      border-color: #d6dce4;
+      background: #f5f6f8;
+      color: #9aa5b1;
+    }
+
+    .site-head {
+      margin-top: 8px;
+      padding: 12px;
+      border: 1px solid #d8e1eb;
+      background: #f7fafc;
+    }
+
+    .site-title-row, .profile-name-row {
+      display: flex;
+      gap: 8px;
+      align-items: start;
+    }
+
+    .site-title {
+      min-width: 0;
+      flex: 1;
+      display: -webkit-box;
+      overflow: hidden;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      font-size: 15px;
+      font-weight: 700;
+      line-height: 1.35;
+    }
+
+    .icon-button {
+      display: grid;
+      width: 28px;
+      min-width: 28px;
+      min-height: 28px;
+      place-items: center;
+      padding: 0;
+      font-size: 15px;
+    }
+
+    .host {
+      overflow: hidden;
+      margin-top: 5px;
+      color: #64748b;
+      font-family: Consolas, monospace;
+      font-size: 11px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .status {
+      display: inline-flex;
+      margin-top: 9px;
+      padding: 3px 7px;
+      border-radius: 999px;
+      background: #dff4e8;
+      color: #17613e;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .status.pending {
+      background: #f5eed8;
+      color: #805d00;
+    }
+
+    .actions-a {
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(122px, .95fr);
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .actions-a .primary { grid-row: span 3; min-height: 118px; }
+
+    .divider {
+      height: 1px;
+      margin: 18px 0 12px;
+      background: #e2e8f0;
+    }
+
+    .disclosure {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 38px;
+      padding: 0 10px;
+      background: #f1f5f9;
+      color: #334155;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .disclosure::before { content: "▾"; }
+
+    .profiles { display: grid; gap: 8px; margin-top: 9px; }
+
+    .profile-a {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 102px;
+      gap: 10px;
+      min-height: 116px;
+      padding: 11px;
+      background: #f7f9fc;
+      border: 1px solid #e1e8f0;
+    }
+
+    .profile-name {
+      display: -webkit-box;
+      overflow: hidden;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.4;
+    }
+
+    .profile-meta {
+      margin-top: 6px;
+      color: #64748b;
+      font-size: 11px;
+    }
+
+    .profile-a > div:first-child,
+    .profile-c > div:first-child {
+      display: grid;
+      min-width: 0;
+      grid-template-rows: minmax(0, 1fr) auto;
+    }
+
+    .profile-a .profile-meta,
+    .profile-c .profile-meta {
+      align-self: end;
+      margin-top: 0;
+    }
+
+    .profile-a .actions, .profile-c .actions {
+      display: grid;
+      grid-template-rows: repeat(3, 1fr);
+      gap: 5px;
+    }
+
+    .profile-a button, .profile-c button { width: 100%; min-height: 28px; font-size: 12px; }
+
+    .actions-b {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 7px;
+      margin-top: 10px;
+    }
+
+    .actions-b .primary { grid-column: span 2; min-height: 42px; }
+
+    .actions-b .danger { background: #fff; }
+
+    .profile-b {
+      padding: 11px;
+      background: #f7f9fc;
+      border: 1px solid #e1e8f0;
+    }
+
+    .profile-b .profile-name { min-height: 37px; }
+
+    .profile-b .profile-meta { display: flex; justify-content: space-between; gap: 8px; }
+
+    .profile-b .actions {
+      display: grid;
+      grid-template-columns: 1fr 1.25fr .8fr;
+      gap: 6px;
+      margin-top: 9px;
+    }
+
+    .profile-b button { min-height: 30px; font-size: 12px; }
+
+    .actions-c {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 7px;
+      margin-top: 10px;
+    }
+
+    .actions-c .primary { grid-column: span 2; min-height: 44px; }
+
+    .manage-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 9px;
+      padding-top: 10px;
+      border-top: 1px solid #d8e1eb;
+      color: #526174;
+      font-size: 12px;
+    }
+
+    .profile-c {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 100px;
+      gap: 10px;
+      padding: 11px;
+      background: #f7f9fc;
+      border-left: 3px solid #87a8c7;
+    }
+
+    .profile-c.inactive { border-left-color: #bac4cf; }
+
+    .caption {
+      margin-top: 12px;
+      color: #64748b;
+      font-size: 11px;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <main class="board">
+    <article class="option" id="option-a">
+      <p class="option-label"><span>A. 主動作優先</span><small>建議方案</small></p>
+      <div class="popup">
+        <h1>違規檢舉小幫手</h1>
+        <h2>目前網站</h2>
+        <div class="site-head">
+          <div class="site-title-row">
+            <p class="site-title">高雄市政府警察局警政信箱（交通違規檢舉）</p>
+            <button class="icon-button" aria-label="編輯網站名稱">✎</button>
+          </div>
+          <p class="host">policemail.kcg.gov.tw</p>
+          <span class="status">已註冊 · 7 個欄位已對應</span>
+        </div>
+        <div class="actions-a">
+          <button class="primary">立即抓取並填表</button>
+          <button>編輯欄位對應</button>
+          <button class="danger">取消註冊</button>
+          <button class="danger">刪除設定</button>
+        </div>
+        <div class="divider"></div>
+        <div class="disclosure">更多設定</div>
+        <h2>已建檔網站</h2>
+        <div class="profiles">
+          <div class="profile-a">
+            <div><p class="profile-name">高雄市政府警察局警政信箱（交通違規檢舉）</p><p class="profile-meta">目前網站 · 7 個欄位已對應</p></div>
+            <div class="actions"><button>編輯</button><button class="danger">取消註冊</button><button class="danger">刪除</button></div>
+          </div>
+          <div class="profile-a">
+            <div><p class="profile-name">新北市政府警察局交通警察大隊 Traffic Police Corps, New Taipei City Police Department 交通違規檢舉系統</p><p class="profile-meta">請先開啟此網站分頁再編輯</p></div>
+            <div class="actions"><button disabled>編輯</button><button class="danger">取消註冊</button><button class="danger">刪除</button></div>
+          </div>
+        </div>
+        <p class="caption">預設收摺；此處為展開後的管理清單預覽。</p>
+      </div>
+    </article>
+
+    <article class="option" id="option-b">
+      <p class="option-label"><span>B. 緊湊操作列</span><small>最節省高度</small></p>
+      <div class="popup">
+        <h1>違規檢舉小幫手</h1>
+        <h2>目前網站</h2>
+        <div class="site-head">
+          <div class="site-title-row">
+            <p class="site-title">高雄市政府警察局警政信箱（交通違規檢舉）</p>
+            <button class="icon-button" aria-label="編輯網站名稱">✎</button>
+          </div>
+          <p class="host">policemail.kcg.gov.tw</p>
+          <span class="status">已註冊 · 7 個欄位已對應</span>
+        </div>
+        <div class="actions-b">
+          <button class="primary">立即抓取並填表</button>
+          <button>編輯欄位對應</button>
+          <button class="danger">取消註冊</button>
+          <button class="danger">刪除設定</button>
+        </div>
+        <div class="divider"></div>
+        <div class="disclosure">更多設定</div>
+        <h2>已建檔網站</h2>
+        <div class="profiles">
+          <div class="profile-b">
+            <p class="profile-name">高雄市政府警察局警政信箱（交通違規檢舉）</p>
+            <p class="profile-meta"><span>目前網站</span><span>7 個欄位已對應</span></p>
+            <div class="actions"><button>編輯</button><button class="danger">取消註冊</button><button class="danger">刪除</button></div>
+          </div>
+          <div class="profile-b">
+            <p class="profile-name">新北市政府警察局交通警察大隊 Traffic Police Corps, New Taipei City Police Department 交通違規檢舉系統</p>
+            <p class="profile-meta"><span>非目前網站</span><span>6 個欄位已對應</span></p>
+            <div class="actions"><button disabled>編輯</button><button class="danger">取消註冊</button><button class="danger">刪除</button></div>
+          </div>
+        </div>
+        <p class="caption">預設收摺；三個管理動作保持同一行。</p>
+      </div>
+    </article>
+
+    <article class="option" id="option-c">
+      <p class="option-label"><span>C. 日常操作優先</span><small>危險操作降噪</small></p>
+      <div class="popup">
+        <h1>違規檢舉小幫手</h1>
+        <h2>目前網站</h2>
+        <div class="site-head">
+          <div class="site-title-row">
+            <p class="site-title">高雄市政府警察局警政信箱（交通違規檢舉）</p>
+            <button class="icon-button" aria-label="編輯網站名稱">✎</button>
+          </div>
+          <p class="host">policemail.kcg.gov.tw</p>
+          <span class="status">已註冊 · 7 個欄位已對應</span>
+        </div>
+        <div class="actions-c">
+          <button class="primary">立即抓取並填表</button>
+          <button>編輯欄位對應</button>
+          <button class="danger">取消註冊</button>
+          <button class="danger">刪除設定</button>
+        </div>
+        <div class="divider"></div>
+        <div class="disclosure">更多設定</div>
+        <h2>已建檔網站</h2>
+        <div class="profiles">
+          <div class="profile-c">
+            <div><p class="profile-name">高雄市政府警察局警政信箱（交通違規檢舉）</p><p class="profile-meta">目前網站 · 7 個欄位已對應</p></div>
+            <div class="actions"><button>編輯</button><button class="danger">取消註冊</button><button class="danger">刪除</button></div>
+          </div>
+          <div class="profile-c inactive">
+            <div><p class="profile-name">新北市政府警察局交通警察大隊 Traffic Police Corps, New Taipei City Police Department 交通違規檢舉系統</p><p class="profile-meta">非目前網站 · 6 個欄位已對應</p></div>
+            <div class="actions"><button disabled>編輯</button><button class="danger">取消註冊</button><button class="danger">刪除</button></div>
+          </div>
+        </div>
+        <p class="caption">以左側狀態線區分目前網站與其他網站。</p>
+      </div>
+    </article>
+  </main>
+  <script>
+    const selectedOption = window.location.hash.slice(1);
+    if (selectedOption) {
+      document.querySelectorAll('.option').forEach((option) => {
+        option.hidden = option.id !== selectedOption;
+      });
+      document.querySelector('.board').style.gridTemplateColumns = '420px';
+    }
+  </script>
+</body>
+</html>

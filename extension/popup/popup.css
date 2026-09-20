@@ -1,27 +1,27 @@
 body {
-  width: 340px;
+  width: 390px;
   font-family: -apple-system, "Segoe UI", "Noto Sans TC", sans-serif;
   font-size: 13px;
-  padding: 8px 12px 14px;
+  padding: 12px;
   color: #1e1e2e;
 }
 
 h1 {
-  font-size: 15px;
-  margin: 4px 0 12px;
+  font-size: 18px;
+  margin: 2px 0 16px;
 }
 
 h2 {
   font-size: 12px;
   color: #555;
-  margin: 0 0 6px;
+  margin: 0 0 8px;
   text-transform: uppercase;
   letter-spacing: 0.02em;
 }
 
 section {
-  margin-bottom: 14px;
-  padding-bottom: 10px;
+  margin-bottom: 16px;
+  padding-bottom: 14px;
   border-bottom: 1px solid #e0e0e0;
 }
 
@@ -43,18 +43,138 @@ button {
   border: 1px solid #c8c8d8;
   background: #f4f4fb;
   border-radius: 4px;
-  padding: 4px 8px;
+  min-width: 0;
+  min-height: 34px;
+  padding: 5px 8px;
   font-size: 12px;
-  margin: 2px 4px 2px 0;
+  overflow-wrap: anywhere;
 }
 
 button:hover {
   background: #e6e6f5;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  border-color: #d9dce5;
+  background: #f5f6f8;
+  color: #949aaa;
+}
+
 button.danger {
   border-color: #e0a0a0;
   color: #b02a2a;
+}
+
+button.primary {
+  border-color: #356fa8;
+  background: #356fa8;
+  color: #fff;
+  font-weight: 600;
+}
+
+button.primary:hover {
+  background: #295d90;
+}
+
+button.primary:disabled,
+button.danger:disabled {
+  border-color: #d9dce5;
+  background: #f5f6f8;
+  color: #949aaa;
+}
+
+#current-site-info {
+  min-height: 68px;
+  padding: 10px;
+  border: 1px solid #d9e1eb;
+  background: #f8fafc;
+}
+
+#current-site-info.site-message {
+  min-height: 0;
+  color: #596273;
+  line-height: 1.5;
+}
+
+.site-name-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.site-name {
+  display: -webkit-box;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.site-name-edit {
+  flex: 0 0 28px;
+  width: 28px;
+  min-height: 28px;
+  padding: 0;
+  font-size: 14px;
+}
+
+.site-hostname {
+  overflow: hidden;
+  margin: 4px 0 0;
+  color: #667085;
+  font-family: Consolas, monospace;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.site-status {
+  display: inline-block;
+  margin-top: 7px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #e1f3e8;
+  color: #17613e;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.site-status.unregistered {
+  background: #f4ebd4;
+  color: #725700;
+}
+
+#current-site-actions {
+  margin-top: 10px;
+}
+
+.site-action-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(112px, .95fr);
+  grid-template-rows: repeat(3, 34px);
+  gap: 6px;
+}
+
+.site-action-grid .site-fill-action {
+  grid-row: span 3;
+}
+
+.site-action-grid.is-unregistered {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: 34px repeat(2, 34px);
+}
+
+.site-action-grid.is-unregistered .site-register-action {
+  grid-column: span 2;
+}
+
+.site-action-grid.is-unregistered .site-fill-action {
+  grid-row: auto;
 }
 
 #profile-list {
@@ -67,14 +187,48 @@ button.danger {
 }
 
 #profile-list li {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 4px;
-  padding: 4px 6px;
-  background: #f7f7fb;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 100px;
+  gap: 10px;
+  min-height: 116px;
+  padding: 10px;
+  background: #f7f9fc;
+  border: 1px solid #e1e8f0;
   border-radius: 4px;
+}
+
+.profile-info {
+  display: grid;
+  min-width: 0;
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.profile-name {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.profile-meta {
+  align-self: end;
+  margin-top: 6px;
+  color: #667085;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.profile-actions {
+  display: grid;
+  grid-template-rows: repeat(3, minmax(28px, 1fr));
+  gap: 5px;
+}
+
+.profile-actions button {
+  min-height: 28px;
+  padding: 3px 5px;
 }
 
 .file-label {
@@ -97,7 +251,8 @@ details#more-settings summary {
   font-size: 12px;
   font-weight: 600;
   color: #444;
-  padding: 6px 4px;
+  padding: 9px 10px;
+  background: #f0f3f8;
   border-radius: 4px;
   list-style: none;
 }
@@ -119,5 +274,5 @@ details#more-settings summary:hover {
 }
 
 details#more-settings section:first-of-type {
-  margin-top: 8px;
+  margin-top: 14px;
 }
