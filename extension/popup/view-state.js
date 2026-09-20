@@ -14,7 +14,9 @@ export function getCurrentSiteActionState(ctx) {
 
 export function getProfileListActionState(currentCtx, profile) {
   const isCurrentSite = Boolean(currentCtx?.supported && currentCtx.siteId === profile.siteId);
-  return { isCurrentSite, canEditMapping: isCurrentSite };
+  // 分頁對得上但權限已被收回（例如取消註冊後）不算「目前網站」，否則會跟上方「尚未註冊」互相矛盾。
+  const canEditMapping = isCurrentSite && Boolean(currentCtx.granted);
+  return { isCurrentSite, canEditMapping };
 }
 
 export function normalizeDisplayName(value) {

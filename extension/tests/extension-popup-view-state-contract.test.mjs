@@ -53,12 +53,19 @@ assert.deepEqual(
 );
 
 assert.deepEqual(
-  getProfileListActionState({ supported: true, siteId: mappedProfile.siteId }, mappedProfile),
+  getProfileListActionState({ supported: true, siteId: mappedProfile.siteId, granted: true }, mappedProfile),
   { isCurrentSite: true, canEditMapping: true }
 );
 assert.deepEqual(
-  getProfileListActionState({ supported: true, siteId: 'other-site' }, mappedProfile),
+  getProfileListActionState({ supported: true, siteId: 'other-site', granted: true }, mappedProfile),
   { isCurrentSite: false, canEditMapping: false }
+);
+
+// 分頁對得上但存取權限已被收回（例如按過「取消註冊」）：不能顯示成可編輯的「目前網站」，
+// 否則會跟上方「目前網站」區塊顯示的「尚未註冊」互相矛盾（版面調整前就存在的既有 bug）。
+assert.deepEqual(
+  getProfileListActionState({ supported: true, siteId: mappedProfile.siteId, granted: false }, mappedProfile),
+  { isCurrentSite: true, canEditMapping: false }
 );
 
 assert.strictEqual(normalizeDisplayName('  高雄交通檢舉  '), '高雄交通檢舉');

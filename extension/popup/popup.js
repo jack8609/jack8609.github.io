@@ -232,9 +232,11 @@ async function renderProfileList() {
 
     const meta = document.createElement('span');
     meta.className = 'profile-meta';
-    meta.textContent = actionState.isCurrentSite
+    meta.textContent = actionState.canEditMapping
       ? `目前網站 · ${profile.fieldOrder.length} 個欄位已對應`
-      : '請先開啟此網站分頁再編輯';
+      : actionState.isCurrentSite
+        ? '此網站已取消註冊，請先在上方重新註冊'
+        : '請先開啟此網站分頁再編輯';
     info.appendChild(meta);
     li.appendChild(info);
 
@@ -244,7 +246,11 @@ async function renderProfileList() {
     actions.appendChild(createButton({
       text: '編輯',
       disabled: !actionState.canEditMapping,
-      title: actionState.canEditMapping ? '開啟欄位對應模式' : '請先開啟此網站分頁再編輯',
+      title: actionState.canEditMapping
+        ? '開啟欄位對應模式'
+        : actionState.isCurrentSite
+          ? '此網站已取消註冊，請先在上方重新註冊'
+          : '請先開啟此網站分頁再編輯',
       onClick: async () => injectMappingModeOrShowError(currentCtx.tab.id)
     }));
 
