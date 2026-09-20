@@ -13,9 +13,23 @@
         "location",
         "violation",
         "description",
-        "evidenceImages"
+        "evidenceImages",
+        "date",
+        "time"
       ],
       "fields": {
+        "date": {
+          "riskField": false,
+          "selector": [
+            { "kind": "plain", "value": "#ContentPlaceHolder1_ViolationDate", "role": "datetime-merge" }
+          ]
+        },
+        "time": {
+          "riskField": false,
+          "selector": [
+            { "kind": "plain", "value": "#ContentPlaceHolder1_ViolationDate", "role": "datetime-merge" }
+          ]
+        },
         "plate": {
           "riskField": false,
           "selector": [
