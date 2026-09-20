@@ -12,7 +12,8 @@
         "plate",
         "location",
         "violation",
-        "description"
+        "description",
+        "evidenceImages"
       ],
       "fields": {
         "plate": {
@@ -40,6 +41,13 @@
           "riskField": false,
           "selector": [
             { "kind": "plain", "value": "#ContentPlaceHolder1_Content" }
+          ]
+        },
+        "evidenceImages": {
+          "riskField": false,
+          "selector": [
+            { "kind": "file-slots", "value": "#ContentPlaceHolder1_fl_File" },
+            { "kind": "file-trigger", "value": "#ContentPlaceHolder1_btnMailFile", "role": "confirm-upload" }
           ]
         }
       }
